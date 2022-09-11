@@ -36,12 +36,10 @@ class BotManager:
         chat_ids = await self.app.store.game_sessions.list_chats(id_only=True, id=chat_id)
         if chat_id not in chat_ids:
             chat = await self.app.store.game_sessions.add_chat_to_db(chat_id)
-
         else:
             self.logger.info("bot added to an already existed in DB chat")
         await self.send_message(peer_id=chat.id, type="bot_added_to_chat")
         await self.send_message(peer_id=chat.id, type="initial")
-
 
     async def on_start(self, chat_id: int, player_id: int) -> None:
         chat_running_sessions = await self.app.store.game_sessions.list_sessions(chat_id=chat_id,
@@ -53,48 +51,49 @@ class BotManager:
                                                                                            "answered_right"])
         if chat_running_sessions:
             await self.send_message(peer_id=chat_id, type="wrong_start")
-        else:
-            session = await self.app.store.game_sessions.create_game_session(chat_id, player_id)
-            await self.app.store.game_sessions.add_player_to_game_session(session.creator, session.id)
-            await self.send_message(peer_id=chat_id, type="started", user_id=player_id)
-            await self.send_message(peer_id=chat_id, type="preparing")
-
+            return
+        session = await self.app.store.game_sessions.create_game_session(chat_id, player_id)
+        await self.app.store.game_sessions.add_player_to_game_session(session.creator, session.id)
+        await self.send_message(peer_id=chat_id, type="started", user_id=player_id)
+        await self.send_message(peer_id=chat_id, type="preparing")
 
     async def on_participate(self, chat_id: int, player_id: int) -> None:
         chat_sessions = await self.app.store.game_sessions.list_sessions(chat_id=chat_id, req_cnds=["preparing"])
         if chat_sessions:
             session = chat_sessions[0]
             session_players = await self.app.store.game_sessions.list_players(id_only=True, session_id=session.id)
-            if player_id not in session_players:
-                await self.app.store.game_sessions.add_player_to_game_session(player_id, session.id)
-                await self.send_message(peer_id=chat_id, type="new_player_added", user_id=player_id)
-            else:
-                await self.send_message(peer_id=chat_id, type="player_already_added", user_id=player_id)
         else:
             await self.send_message(peer_id=chat_id, type="no_preparing_session")
+            return
+        if player_id in session_players:
+            await self.send_message(peer_id=chat_id, type="player_already_added", user_id=player_id)
+            return
+        await self.app.store.game_sessions.add_player_to_game_session(player_id, session.id)
+        await self.send_message(peer_id=chat_id, type="new_player_added", user_id=player_id)
         await self.send_message(peer_id=chat_id, type="preparing")
-
 
     async def on_run(self, chat_id: int, player_id: int) -> None:
         chat_sessions = await self.app.store.game_sessions.list_sessions(chat_id=chat_id, req_cnds=["preparing"])
         if chat_sessions:
             session = chat_sessions[0]
-            if session.creator == player_id:
-                session_players = await self.app.store.game_sessions.list_players(id_only=True, session_id=session.id)
-                if len(session_players) > 1:
-                    await self.app.store.game_sessions.set_session_state(session.id, "just_started")
-                    await self.send_message(peer_id=chat_id, type="start_quiz")
-                    await self.app.store.game_sessions.add_questions_to_session(session.id)
-                else:
-                    await self.send_message(peer_id=chat_id, type="not_enough_players")
-                    await self.send_message(peer_id=chat_id, type="preparing")
-            else:
-                await self.send_message(peer_id=chat_id, type="not_creator_to_run", user_id=player_id)
-                await self.send_message(peer_id=chat_id, type="preparing")
         else:
             await self.send_message(peer_id=chat_id, type="no_preparing_session")
             await self.send_message(peer_id=chat_id, type="preparing")
-
+            return
+        if session.creator == player_id:
+            session_players = await self.app.store.game_sessions.list_players(id_only=True, session_id=session.id)
+        else:
+            await self.send_message(peer_id=chat_id, type="not_creator_to_run", user_id=player_id)
+            await self.send_message(peer_id=chat_id, type="preparing")
+            return
+        if len(session_players) < 2:
+            await self.send_message(peer_id=chat_id, type="not_enough_players")
+            await self.send_message(peer_id=chat_id, type="preparing")
+            return
+        await self.app.store.game_sessions.set_session_state(session.id, "just_started")
+        await self.send_message(peer_id=chat_id, type="start_quiz")
+        await self.app.store.game_sessions.add_questions_to_session(session.id)
+        await self.choose_answerer(session, session_players)
 
     async def send_message(self, peer_id: int, type: str, **kwargs) -> None:
         params = {"peer_id": peer_id, "message": self.messagetext[type]}
@@ -127,11 +126,6 @@ class BotManager:
             elif text == 'Поехали':
                 await self.on_run(chat_id=chat_id, player_id=player_id)
 
-
-
-
-
-
     async def do_things_on_start(self):
         # Firstly, send to all message that bot was restarted
 
@@ -149,7 +143,5 @@ class BotManager:
         for chat_id in chats:
             await self.send_message(peer_id=chat_id, type="preparing")
 
-
-
-
-
+    def choose_answerer(self, session_id, session_players):
+        pass

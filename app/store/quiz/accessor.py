@@ -77,8 +77,11 @@ class QuizAccessor(BaseAccessor):
                 session.add(question)
 
         await self.create_answers(question_id=question.id, answers=answers)
-        question = Question(id=question.id, title=question.title, theme_id=question.theme_id, answers=answers)
-
+        question = Question(id=question.id,
+                            title=question.title,
+                            points=question.points,
+                            theme_id=question.theme_id,
+                            answers=answers)
         return question
 
 
@@ -93,7 +96,7 @@ class QuizAccessor(BaseAccessor):
                     result = await session.execute(stmt)
                     curr = result.scalars()
                     answers = [Answer(is_correct=a.is_correct, title=a.title) for a in curr]
-                    return Question(id=q.id, title=q.title, theme_id=q.theme_id, answers=answers)
+                    return Question(id=q.id, title=q.title, points=q.points, theme_id=q.theme_id, answers=answers)
 
 
     async def list_questions(self, theme_id: Optional[int] = None) -> list[Question]:

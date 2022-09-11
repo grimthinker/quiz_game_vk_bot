@@ -162,7 +162,11 @@ class GameSessionAccessor(BaseAccessor):
             async with session.begin():
                 stmt = select(PlayerModel)
                 if session_id:
-                    stmt = stmt.filter(PlayerModel.association_players_sessions.any(PlayersSessions.session_id == session_id))
+                    stmt = stmt.filter(
+                        PlayerModel.association_players_sessions.any(
+                            PlayersSessions.session_id == session_id
+                        )
+                    )
                 result = await session.execute(stmt)
                 curr = result.scalars()
                 if id_only:
@@ -199,4 +203,4 @@ class GameSessionAccessor(BaseAccessor):
                         )
 
     async def add_questions_to_session(self, session_id):
-        pass
+        session_id
