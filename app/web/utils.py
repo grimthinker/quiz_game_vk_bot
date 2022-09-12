@@ -45,31 +45,60 @@ def make_update_from_raw(raw_update: dict) -> Update:
         from_id = message["from_id"]
         action = message.get("action", None)
         action_type = action["type"] if action else None
+        payload_cmd = payload_txt = None
+        payload = message.get("payload", None)
+        if isinstance(payload, str):
+            payload = payload.strip('[]""')
+            payload = payload.split()
+            if len(payload) == 2:
+                payload_cmd = payload[0]
+                payload_txt = payload[1]
         update_message = UpdateMessage(id=message_id,
                                        from_id=from_id,
                                        text=text,
                                        peer_id=peer_id,
-                                       action_type=action_type)
+                                       action_type=action_type,
+                                       payload_cmd=payload_cmd,
+                                       payload_txt=payload_txt)
         update_object = UpdateObject(message=update_message)
         update = Update(type=type, object=update_object)
         return update
 
 
-def get_keyboard_json(type: str) -> str:
-    def _button(label: str) -> dict:
-        return {"action": {"type": "text", "label": label}}
-
-    buttons = [[]]
-    if type == "initial":
+def get_keyboard_json(type: str, **kwargs) -> str:
+    def _button(label: str, payload: Optional[list] = None) -> dict:
+        button = {"action": {"type": "text", "label": label}}
+        if payload:
+            button["action"]["payload"] = payload
+        return button
+    buttons = []
+    if type in ["initial"]:
         buttons = [[_button("Старт")]]
-    elif type == "preparing":
+    elif type in ["preparing", "player_already_added", "not_enough_players", "not_creator_to_run", "new_player_added"]:
         buttons = [[_button("Участвовать")], [_button("Поехали")]]
+    elif type in ["question"]:
+        if "question" in kwargs:
+            answers = kwargs["question"].answers
+            for answer in answers:
+                payload = [" ".join(["chosen_answer", str(answer.is_correct)])]
+                buttons.append([_button(label=answer.title, payload=payload)])
+
+    elif type == "new_answerer":
+        if "questions" in kwargs:
+            questions = kwargs["questions"]     # questions ~ {theme1: {100: q1, 200: q2}, theme2: {100: q3, 200: q4},}
+            for theme_name, theme_questions in questions.items():
+                line = []
+                for points, question in theme_questions.items():
+                    text = " ".join([theme_name, str(points)])
+                    payload = [" ".join(["chosen_question", str(question.id)])]
+                    line.append(_button(label=text, payload=payload))
+                buttons.append(line)
     keyboard = {
         "one_time": False,
         "buttons": buttons,
         "inline": False
     }
-    if buttons != [[]]:
+    if buttons:
         return json.dumps(keyboard)
 
 

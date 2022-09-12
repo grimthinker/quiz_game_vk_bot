@@ -86,7 +86,6 @@ class VkApiAccessor(BaseAccessor):
             raw_updates = data.get("updates", [])
             updates = []
             for update in raw_updates:
-
                 try:
                     update = make_update_from_raw(update)
                     updates.append(update)

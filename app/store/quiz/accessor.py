@@ -1,7 +1,8 @@
 from typing import Optional
 import logging
-from sqlalchemy import select, delete, text
+from sqlalchemy import select, delete, text, and_
 from app.base.base_accessor import BaseAccessor
+from app.game_session.models import SessionsQuestions
 from app.quiz.models import (
     Answer, AnswerModel,
     Question, QuestionModel,
@@ -40,10 +41,12 @@ class QuizAccessor(BaseAccessor):
                     return Theme(id=theme.id, title=theme.title)
 
 
-    async def list_themes(self) -> list[Theme]:
+    async def list_themes(self, limit: Optional[int] = None) -> list[Theme]:
         async with self.app.database.session() as session:
             async with session.begin():
                 stmt = select(ThemeModel)
+                if limit:
+                    stmt = stmt.limit(limit)
                 result = await session.execute(stmt)
                 curr = result.scalars()
                 return [Theme(id=theme.id, title=theme.title) for theme in curr]
@@ -99,12 +102,39 @@ class QuizAccessor(BaseAccessor):
                     return Question(id=q.id, title=q.title, points=q.points, theme_id=q.theme_id, answers=answers)
 
 
-    async def list_questions(self, theme_id: Optional[int] = None) -> list[Question]:
+    async def get_question_by_id(self, id: int) -> Optional[Question]:
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = select(QuestionModel).where(QuestionModel.id == id)
+                result = await session.execute(stmt)
+                curr = result.scalars()
+                for q in curr:
+                    stmt = select(AnswerModel).where(AnswerModel.question_id == q.id)
+                    result = await session.execute(stmt)
+                    curr = result.scalars()
+                    answers = [Answer(is_correct=a.is_correct, title=a.title) for a in curr]
+                    return Question(id=q.id, title=q.title, points=q.points, theme_id=q.theme_id, answers=answers)
+
+    async def list_questions(self, theme_id: Optional[int] = None,
+                             points: Optional[int] = None,
+                             limit: Optional[int] = None,
+                             session_id: Optional[int] = None,
+                             answered: Optional[bool] = None) -> list[Question]:
         async with self.app.database.session() as session:
             async with session.begin():
                 stmt = select(QuestionModel)
+                if session_id:
+                    sub_conditions = [(SessionsQuestions.session_state_id == session_id)]
+                    if answered:
+                        sub_conditions.append((SessionsQuestions.is_answered == answered))
+                    condition = QuestionModel.sessions.any(and_(*sub_conditions))
+                    stmt = stmt.filter(condition)
                 if theme_id:
                     stmt = stmt.where(QuestionModel.theme_id == theme_id)
+                if points:
+                    stmt = stmt.where(QuestionModel.points == points)
+                if limit:
+                    stmt = stmt.limit(limit)
                 result = await session.execute(stmt)
                 curr = result.scalars()
                 question_list = []
@@ -113,5 +143,10 @@ class QuizAccessor(BaseAccessor):
                     result = await session.execute(stmt)
                     curr = result.scalars()
                     answers = [Answer(is_correct=a.is_correct, title=a.title) for a in curr]
-                    question_list.append(Question(title=q.title, id=q.id, theme_id=q.theme_id, answers=answers))
+
+                    question_list.append(Question(title=q.title,
+                                                  id=q.id,
+                                                  points=q.points,
+                                                  theme_id=q.theme_id,
+                                                  answers=answers))
                 return question_list

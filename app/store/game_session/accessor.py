@@ -1,14 +1,19 @@
-from typing import Optional, Union
-import logging
-from sqlalchemy import select, join, delete, text, or_, and_
+import random
+from collections import defaultdict, Counter
+from typing import Optional, Union, Dict
+from sqlalchemy import select, join, delete, text, or_, and_, update
+from sqlalchemy.sql.elements import BooleanClauseList
+
 from app.base.base_accessor import BaseAccessor
 from app.game_session.models import (
     GameSession, GameSessionModel,
     Chat, ChatModel,
     Player, PlayerModel,
     SessionStateModel,
-    PlayersSessions
+    PlayersSessions,
+    SessionsQuestions, SessionState
 )
+from app.quiz.models import Question
 
 
 class GameSessionAccessor(BaseAccessor):
@@ -72,30 +77,75 @@ class GameSessionAccessor(BaseAccessor):
     async def set_session_state(self, session_id: int, new_state: str) -> None:
         async with self.app.database.session() as session:
             async with session.begin():
-                game_session = await self.get_game_session_by_id(id=session_id, dc=True)
-                game_session
+                stmt = update(SessionStateModel).\
+                    where(SessionStateModel.session_id == session_id).\
+                    values(state_name=SessionStateModel.states[new_state])
+                await session.execute(stmt)
 
-    async def add_player_to_game_session(self, player_id: int, session_id: int) -> None:
+    async def add_player_to_session(self, player_id: int, session_id: int) -> None:
         async with self.app.database.session() as session:
             async with session.begin():
                 player = await self.get_player_by_id(id=player_id, dc=False)
                 if not player:
-                    await self.app.store.game_sessions.add_player_to_db(player_id=player_id)
-                game_session = await self.get_game_session_by_id(id=session_id, dc=False)
-                if game_session:
-                    association_players_sessions = PlayersSessions(player_id=player_id, session_id=session_id)
-                    session.add(association_players_sessions)
-                else:
-                    self.logger.error("No session with that id")
+                    await self.add_player_to_db(player_id=player_id)
+                association = PlayersSessions(player_id=player_id, session_id=session_id)
+                session.add(association)
 
-    def chat_filter_condition(self, req_cnd: Optional[str] = None):
-        """
-        :param req_cnd: if "no_running_session", return condition for selecting chats that have no
-        running game. That means, every chat in select either has no session or has only ended sessions.
-        If req_cnd is in SessionStateModel.states.values, condition is being made with filter_by_states method
+    async def add_questions_to_session(self, session_id: int,
+                                       theme_limit: int,
+                                       questions_points: list[int]) -> dict[str, dict[int, Question]]:
+        questions = {}
+        async with self.app.database.session() as session:
+            async with session.begin():
+                themes = await self.app.store.quizzes.list_themes(limit=theme_limit)
+                for theme in themes:
+                    questions[theme.title] = {}
+                    for req_points in questions_points:
+                        questions_list = await self.app.store.quizzes.list_questions(theme_id=theme.id,
+                                                                                     points=req_points)
+                        question = random.choice(questions_list)
 
-        :return: condition for chat filter function.
-        """
+                        questions[theme.title][req_points] = question
+                        association = SessionsQuestions(session_state_id=session_id,
+                                                        question_id=question.id,
+                                                        is_answered=False)
+                        session.add(association)
+        return questions
+
+    async def set_current_question(self, session_id: int, question_id: int) -> Question:
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = update(SessionStateModel). \
+                    where(SessionStateModel.session_id == session_id). \
+                    values(current_question=question_id)
+                await session.execute(stmt)
+        question = await self.app.store.quizzes.get_question_by_id(id=question_id)
+        return question
+
+    async def get_questions_of_session_dict(self, session_id: int) -> dict[str, dict[int, Question]]:
+        questions_list = await self.app.store.quizzes.list_questions(session_id=session_id)
+        theme_ids = set([x.theme_id for x in questions_list])
+        theme_ids_to_names = {}
+        for theme_id in theme_ids:
+            theme = await self.app.store.quizzes.get_theme_by_id(theme_id)
+            theme_ids_to_names[theme_id] = theme.title
+        questions = defaultdict(dict)              # questions ~ {theme1: {100: q1, 200: q2}, theme2: {100: q3, 200: q4},}
+        for x in questions_list:
+            questions[theme_ids_to_names[x.theme_id]][x.points] = x
+        return questions
+
+    async def choose_answerer(self, session_id:int, session_players: list[int]) -> Player:
+        answerer_id = random.choice(session_players)
+        answerer = await self.get_player_by_id(answerer_id)
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = update(SessionStateModel)\
+                      .where(SessionStateModel.session_id == session_id)\
+                      .values(current_answerer=answerer.id)
+                await session.execute(stmt)
+        return answerer
+
+    def chat_filter_condition(self, req_cnd: Optional[str] = None) -> BooleanClauseList:
         condition = None
         if req_cnd == "chats_session_needed":
             condition = self.chats_session_needed
@@ -106,12 +156,6 @@ class GameSessionAccessor(BaseAccessor):
     async def list_chats(self, id_only: bool = False,
                          req_cnd: Optional[str] = None,
                          id: Optional[int] = None) -> Union[list[Chat], list[int]]:
-        """
-        :param: id_only: if True, function returns list with int IDs of chats, else list with Chat dataclass instances.
-        :param: req_cnd: arg for make_chat_filter_condition function.
-
-        :return: list with integer IDs of chats or list with Chat dataclass instances.
-        """
         async with self.app.database.session() as session:
             async with session.begin():
                 stmt = select(ChatModel)
@@ -186,7 +230,7 @@ class GameSessionAccessor(BaseAccessor):
                     else:
                         return Player(id=player.id)
 
-    async def get_game_session_by_id(self, id: int, dc=True) -> Union[GameSession, GameSessionModel]:
+    async def get_game_session_by_id(self, id: int, dc: bool = True) -> Union[GameSession, GameSessionModel]:
         async with self.app.database.session() as session:
             async with session.begin():
                 stmt = select(GameSessionModel).filter(GameSessionModel.id == id)
@@ -202,5 +246,20 @@ class GameSessionAccessor(BaseAccessor):
                                 creator=game_session.creator,
                         )
 
-    async def add_questions_to_session(self, session_id):
-        session_id
+    async def get_session_state_by_id(self, id: int, dc: bool = True) -> Union[SessionState, SessionStateModel]:
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = select(SessionStateModel).filter(SessionStateModel.session_id == id)
+                result = await session.execute(stmt)
+                state = result.scalars().first()
+                if state:
+                    if not dc:
+                        return state
+                    else:
+                        return SessionState(
+                            session_id=state.session_id,
+                            state_name=state.state_name,
+                            current_answerer=state.current_answerer,
+                            current_question=state.current_question,
+                            ended=state.ended
+                        )

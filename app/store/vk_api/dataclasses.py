@@ -9,6 +9,8 @@ class UpdateMessage:
     id: int
     peer_id: int
     action_type: Optional[str]
+    payload_cmd: Optional[str]
+    payload_txt: Optional[str]
 
 
 @dataclass

@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from typing import Optional
+
 from app.store.database.sqlalchemy_base import db
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import (
@@ -27,6 +29,15 @@ class GameSession:
     id: int
     chat_id: int
     creator: Player
+
+
+@dataclass
+class SessionState:
+    session_id: int
+    state_name: str
+    current_question: Optional[int] = None
+    current_answerer: Optional[int] = None
+    ended: Optional[str] = None
 
 
 class ChatModel(db):
