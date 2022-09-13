@@ -36,7 +36,7 @@ class SessionState:
     session_id: int
     state_name: str
     current_question: Optional[int] = None
-    current_answerer: Optional[int] = None
+    last_answerer: Optional[int] = None
     ended: Optional[str] = None
 
 
@@ -50,7 +50,7 @@ class SessionStateModel(db):
     session_id = Column(BigInteger, ForeignKey("game_sessions.id", ondelete="CASCADE"), primary_key=True)
     state_name = Column(Integer, nullable=False)
     current_question = Column(BigInteger, ForeignKey("questions.id", ondelete="CASCADE"), nullable=True)
-    current_answerer = Column(BigInteger, ForeignKey("players.id", ondelete="CASCADE"), nullable=True)
+    last_answerer = Column(BigInteger, ForeignKey("players.id", ondelete="CASCADE"), nullable=True)
     ended = Column(Text, nullable=True)
 
     session = relationship("GameSessionModel", back_populates="state", uselist=False)
@@ -62,10 +62,8 @@ class SessionStateModel(db):
                             )
 
     states = {"preparing": 0,
-              "just_started": 2,
+              "waiting_question": 2,
               "question_asked": 3,
-              "answered_wrong": 4,
-              "answered_right": 5,
               "ended": 9}
 
 
@@ -83,6 +81,8 @@ class PlayersSessions(db):
     player_id = Column(BigInteger, ForeignKey("players.id", ondelete="CASCADE"), primary_key=True)
     session_id = Column(BigInteger, ForeignKey("game_sessions.id", ondelete="CASCADE"), primary_key=True)
     points = Column(Integer, nullable=False, default=0)
+    can_answer = Column(Boolean, nullable=False, default=True)
+    can_choose_question = Column(Boolean, nullable=False, default=True)
 
     players = relationship("PlayerModel", back_populates="association_players_sessions")
     sessions = relationship("GameSessionModel", back_populates="association_players_sessions")

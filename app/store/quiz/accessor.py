@@ -125,7 +125,7 @@ class QuizAccessor(BaseAccessor):
                 stmt = select(QuestionModel)
                 if session_id:
                     sub_conditions = [(SessionsQuestions.session_state_id == session_id)]
-                    if answered:
+                    if answered is not None:
                         sub_conditions.append((SessionsQuestions.is_answered == answered))
                     condition = QuestionModel.sessions.any(and_(*sub_conditions))
                     stmt = stmt.filter(condition)

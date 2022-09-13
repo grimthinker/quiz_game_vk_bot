@@ -122,26 +122,25 @@ class GameSessionAccessor(BaseAccessor):
         question = await self.app.store.quizzes.get_question_by_id(id=question_id)
         return question
 
-    async def get_questions_of_session_dict(self, session_id: int) -> dict[str, dict[int, Question]]:
-        questions_list = await self.app.store.quizzes.list_questions(session_id=session_id)
-        theme_ids = set([x.theme_id for x in questions_list])
-        theme_ids_to_names = {}
-        for theme_id in theme_ids:
-            theme = await self.app.store.quizzes.get_theme_by_id(theme_id)
-            theme_ids_to_names[theme_id] = theme.title
-        questions = defaultdict(dict)              # questions ~ {theme1: {100: q1, 200: q2}, theme2: {100: q3, 200: q4},}
-        for x in questions_list:
-            questions[theme_ids_to_names[x.theme_id]][x.points] = x
-        return questions
+    async def get_questions_of_session(self,
+                                       session_id: int,
+                                       answered: Optional[bool] = None,
+                                       id_only: bool = False,
+                                       ) -> list[Question]:
+        questions_list = await self.app.store.quizzes.list_questions(session_id=session_id, answered=answered)
+        if id_only:
+            return [q.id for q in questions_list]
+        return questions_list
 
-    async def choose_answerer(self, session_id:int, session_players: list[int]) -> Player:
-        answerer_id = random.choice(session_players)
-        answerer = await self.get_player_by_id(answerer_id)
+    async def set_answerer(self, session_id: int, to_set: Union[list[int], int]) -> Player:
+        if type(to_set) == list:
+            to_set = random.choice(to_set)
+        answerer = await self.get_player_by_id(to_set)
         async with self.app.database.session() as session:
             async with session.begin():
                 stmt = update(SessionStateModel)\
                       .where(SessionStateModel.session_id == session_id)\
-                      .values(current_answerer=answerer.id)
+                      .values(last_answerer=answerer.id)
                 await session.execute(stmt)
         return answerer
 
@@ -201,7 +200,8 @@ class GameSessionAccessor(BaseAccessor):
                     ]
 
     async def list_players(self, id_only: bool = False,
-                           session_id: Optional[int] = None) -> Union[list[Player], list[int]]:
+                           session_id: Optional[int] = None,
+                           can_answer: Optional[bool] = None) -> Union[list[Player], list[int]]:
         async with self.app.database.session() as session:
             async with session.begin():
                 stmt = select(PlayerModel)
@@ -211,6 +211,12 @@ class GameSessionAccessor(BaseAccessor):
                             PlayersSessions.session_id == session_id
                         )
                     )
+                    if can_answer is not None:
+                        stmt = stmt.filter(
+                            PlayerModel.association_players_sessions.any(
+                                PlayersSessions.can_answer == can_answer
+                            )
+                        )
                 result = await session.execute(stmt)
                 curr = result.scalars()
                 if id_only:
@@ -259,7 +265,56 @@ class GameSessionAccessor(BaseAccessor):
                         return SessionState(
                             session_id=state.session_id,
                             state_name=state.state_name,
-                            current_answerer=state.current_answerer,
+                            last_answerer=state.last_answerer,
                             current_question=state.current_question,
                             ended=state.ended
                         )
+
+    async def add_points_to_player(self, player_id: int, points: int) -> int:
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = select(PlayersSessions).where(PlayersSessions.player_id == player_id)
+                result = await session.execute(stmt)
+                current_points = result.scalars().first().points
+                current_points += points
+                stmt = update(PlayersSessions).where(PlayersSessions.player_id == player_id). \
+                    values(points=current_points)
+                await session.execute(stmt)
+                return current_points
+
+    async def restore_answering(self, session_id: int) -> None:
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = update(PlayersSessions).where(PlayersSessions.session_id == session_id).\
+                    values(can_answer=True)
+                await session.execute(stmt)
+
+    async def forbid_answering(self, session_id: int, player_id: int) -> None:
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = update(PlayersSessions).where(
+                    and_(PlayersSessions.session_id == session_id,
+                         PlayersSessions.player_id == player_id)).values(can_answer=False)
+                await session.execute(stmt)
+
+    async def check_if_no_players_left(self, session_id: int) -> bool:
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = select(PlayersSessions).where(PlayersSessions.session_id == session_id)
+                result = await session.execute(stmt)
+                session_players = result.scalars()
+                for player in session_players:
+                    if player.can_answer:
+                        return False
+        return True
+
+    async def get_session_results(self, session_id: int) -> dict[int, int]:
+        results = {}
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = select(PlayersSessions).where(PlayersSessions.session_id == session_id)
+                result = await session.execute(stmt)
+                session_players = result.scalars()
+                for player in session_players:
+                    result[player.id] = player.points
+        return results
