@@ -25,19 +25,20 @@ class Player:
 
 
 @dataclass
-class GameSession:
-    id: int
-    chat_id: int
-    creator: Player
-
-
-@dataclass
 class SessionState:
     session_id: int
     state_name: str
     current_question: Optional[int] = None
     last_answerer: Optional[int] = None
     ended: Optional[str] = None
+
+
+@dataclass
+class GameSession:
+    id: int
+    chat_id: int
+    creator: Player
+    state: SessionState
 
 
 class ChatModel(db):

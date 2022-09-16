@@ -1,6 +1,6 @@
 import random
 from collections import defaultdict, Counter
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, Iterable
 from sqlalchemy import select, join, delete, text, or_, and_, update
 from sqlalchemy.sql.elements import BooleanClauseList
 
@@ -26,7 +26,9 @@ class GameSessionAccessor(BaseAccessor):
     chats_with_no_running_sessions = (ChatModel.id.notin_(chats_with_running_sessions))
     chats_session_needed = or_(chats_with_no_session, chats_with_no_running_sessions)
 
-    def filter_by_states(self, states: list, logic: Union[or_, and_] = or_, selecting: str = "sessions"):
+    def filter_by_states(self, states: list,
+                         logic: Union[or_, and_] = or_,
+                         selecting: str = "sessions") -> BooleanClauseList:
         """
         :param states: list of names of states for filtering game sessions by their states
         :param logic: sqlalchemy logical operator, or_ or and_
@@ -36,10 +38,12 @@ class GameSessionAccessor(BaseAccessor):
         conditions_list = []
         for state_name in states:
             if state_name in SessionStateModel.states:
+
                 conditions_list.append(SessionStateModel.state_name == SessionStateModel.states[state_name])
         condition = logic(*conditions_list)
         if selecting == "chats":
             condition = ChatModel.id.in_(self.chats_with_sessions.join(SessionStateModel).filter(condition))
+
         return condition
 
     async def add_chat_to_db(self, chat_id: int) -> Chat:
@@ -71,7 +75,15 @@ class GameSessionAccessor(BaseAccessor):
                 session.add(session_state)
         game_session = GameSession(id=game_session.id,
                                    chat_id=game_session.chat_id,
-                                   creator=game_session.creator)
+                                   creator=game_session.creator,
+                                   state=SessionState(
+                                       session_id=session_state.session_id,
+                                       state_name=session_state.state_name,
+                                       current_question=session_state.current_question,
+                                       last_answerer=session_state.last_answerer,
+                                       ended=session_state.ended
+                                   )
+                                   )
         return game_session
 
     async def set_session_state(self, session_id: int, new_state: str) -> None:
@@ -126,8 +138,9 @@ class GameSessionAccessor(BaseAccessor):
                                        session_id: int,
                                        answered: Optional[bool] = None,
                                        id_only: bool = False,
-                                       ) -> list[Question]:
-        questions_list = await self.app.store.quizzes.list_questions(session_id=session_id, answered=answered)
+                                       ) -> Union[list[int], list[Question]]:
+        questions_list = await self.app.store.quizzes.list_questions(session_id=session_id,
+                                                                     answered=answered,)
         if id_only:
             return [q.id for q in questions_list]
         return questions_list
@@ -143,6 +156,14 @@ class GameSessionAccessor(BaseAccessor):
                       .values(last_answerer=answerer.id)
                 await session.execute(stmt)
         return answerer
+
+    async def set_question_answered(self, question_id: int) -> None:
+        async with self.app.database.session() as session:
+            async with session.begin():
+                stmt = update(SessionsQuestions).\
+                    where(SessionsQuestions.question_id == question_id).\
+                    values(is_answered=True)
+                await session.execute(stmt)
 
     def chat_filter_condition(self, req_cnd: Optional[str] = None) -> BooleanClauseList:
         condition = None
@@ -176,7 +197,7 @@ class GameSessionAccessor(BaseAccessor):
                             creator_id: Optional[int] = None) -> Union[list[GameSession], list[int]]:
         async with self.app.database.session() as session:
             async with session.begin():
-                stmt = select(GameSessionModel)
+                stmt = select(GameSessionModel, SessionStateModel).join(SessionStateModel)
                 if req_cnds:
                     condition = self.filter_by_states(req_cnds)
                     stmt = stmt.filter(condition)
@@ -185,18 +206,23 @@ class GameSessionAccessor(BaseAccessor):
                 if creator_id:
                     stmt = stmt.filter(GameSessionModel.creator == creator_id)
                 result = await session.execute(stmt)
-                curr = result.scalars()
-
                 if id_only:
-                    return [game_session.id for game_session in curr]
+                    return [game_session.id for game_session, state in result]
                 else:
                     return [
                         GameSession(
                             id=game_session.id,
                             chat_id=game_session.chat_id,
-                            creator=game_session.creator
+                            creator=game_session.creator,
+                            state=SessionState(
+                                session_id=state.session_id,
+                                state_name=state.state_name,
+                                current_question=state.current_question,
+                                last_answerer=state.last_answerer,
+                                ended=state.ended,
+                            )
                         )
-                        for game_session in curr
+                        for game_session, state in result
                     ]
 
     async def list_players(self, id_only: bool = False,
@@ -239,9 +265,9 @@ class GameSessionAccessor(BaseAccessor):
     async def get_game_session_by_id(self, id: int, dc: bool = True) -> Union[GameSession, GameSessionModel]:
         async with self.app.database.session() as session:
             async with session.begin():
-                stmt = select(GameSessionModel).filter(GameSessionModel.id == id)
-                result = await session.execute(stmt)
-                game_session = result.scalars().first()
+                stmt = select(GameSessionModel, SessionStateModel).join(SessionStateModel).filter(GameSessionModel.id == id)
+                rows = await session.execute(stmt)
+                game_session, state = next(rows, None)
                 if game_session:
                     if not dc:
                         return game_session
@@ -250,6 +276,13 @@ class GameSessionAccessor(BaseAccessor):
                                 id=game_session.id,
                                 chat_id=game_session.chat_id,
                                 creator=game_session.creator,
+                                state=SessionState(
+                                    session_id=state.session_id,
+                                    state_name=state.state_name,
+                                    current_question=state.current_question,
+                                    last_answerer=state.last_answerer,
+                                    ended=state.ended,
+                                )
                         )
 
     async def get_session_state_by_id(self, id: int, dc: bool = True) -> Union[SessionState, SessionStateModel]:
@@ -270,14 +303,16 @@ class GameSessionAccessor(BaseAccessor):
                             ended=state.ended
                         )
 
-    async def add_points_to_player(self, player_id: int, points: int) -> int:
+    async def add_points_to_player(self, session_id: int, player_id: int, points: int) -> int:
         async with self.app.database.session() as session:
             async with session.begin():
-                stmt = select(PlayersSessions).where(PlayersSessions.player_id == player_id)
+                stmt = select(PlayersSessions).where(and_(PlayersSessions.player_id == player_id,
+                                                          PlayersSessions.session_id == session_id))
                 result = await session.execute(stmt)
                 current_points = result.scalars().first().points
                 current_points += points
-                stmt = update(PlayersSessions).where(PlayersSessions.player_id == player_id). \
+                stmt = update(PlayersSessions).\
+                    where(and_(PlayersSessions.player_id == player_id, PlayersSessions.session_id == session_id)).\
                     values(points=current_points)
                 await session.execute(stmt)
                 return current_points
@@ -309,12 +344,12 @@ class GameSessionAccessor(BaseAccessor):
         return True
 
     async def get_session_results(self, session_id: int) -> dict[int, int]:
-        results = {}
+        to_return = {}
         async with self.app.database.session() as session:
             async with session.begin():
                 stmt = select(PlayersSessions).where(PlayersSessions.session_id == session_id)
                 result = await session.execute(stmt)
                 session_players = result.scalars()
                 for player in session_players:
-                    result[player.id] = player.points
-        return results
+                    to_return[player.player_id] = player.points
+        return to_return

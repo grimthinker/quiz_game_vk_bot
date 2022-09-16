@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union, Iterable
 import logging
 from sqlalchemy import select, delete, text, and_
 from app.base.base_accessor import BaseAccessor
@@ -136,8 +136,8 @@ class QuizAccessor(BaseAccessor):
                 if limit:
                     stmt = stmt.limit(limit)
                 result = await session.execute(stmt)
-                curr = result.scalars()
                 question_list = []
+                curr = result.scalars()
                 for q in curr:
                     stmt = select(AnswerModel).where(AnswerModel.question_id == q.id)
                     result = await session.execute(stmt)
@@ -148,5 +148,6 @@ class QuizAccessor(BaseAccessor):
                                                   id=q.id,
                                                   points=q.points,
                                                   theme_id=q.theme_id,
-                                                  answers=answers))
+                                                  answers=answers,
+                                                  ))
                 return question_list

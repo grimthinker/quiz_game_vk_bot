@@ -51,6 +51,7 @@ class View(AiohttpView):
         data.update(self.request.get('querystring', {}))
         return data
 
+
 app = Application()
 
 

@@ -2,6 +2,7 @@ import asyncio
 from asyncio import Task
 from typing import Optional
 
+from app import asyncpool
 from app.store import Store
 
 
@@ -20,6 +21,12 @@ class Poller:
         await self.poll_task
 
     async def poll(self):
-        while self.is_running:
-            await self.store.vk_api.poll()
-
+        async with asyncpool.AsyncPool(loop=None, num_workers=10, name="HandlersPool",
+                                       logger=self.store.bots_manager.logger,
+                                       worker_co=self.store.bots_manager.handle_update,
+                                       max_task_time=300,
+                                       log_every_n=10) as pool:
+            while self.is_running:
+                updates = await self.store.vk_api.poll()
+                for update in updates:
+                    await pool.push(update)

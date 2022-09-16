@@ -5,6 +5,7 @@ from typing import Union, Optional
 
 from app.game_session.models import GameSession, Player, SessionState
 from app.quiz.models import Question
+from app.store.bot.game_settings import *
 from app.store.vk_api.dataclasses import Update
 from app.web.utils import get_keyboard_json
 
@@ -26,7 +27,8 @@ class BotManager:
         "question": "Вопрос: questionplaceholder",
         "answered_correct": "nameplaceholder дал правильный ответ! Игрок получает pointsplaceholder очков, текущая сумма: curpntsplaceholder",
         "answered_wrong": "Неверный ответ! nameplaceholder теряет pointsplaceholder очков, текущая сумма: curpntsplaceholder",
-        "game_ended": "Игра окончена игроком nameplaceholder",
+        "quiz_ended_on_stop": "Игра окончена игроком nameplaceholder, результаты: resultsplaceholder",
+        "quiz_ended": "Игра окончена, результаты: resultsplaceholder",
         "no_players_left": "Все игроки ответили неверно, правильный ответ - answerplaceholder",
         "wrong_start": "Чтобы начать новую игру, завершите текущюю",
         "no_preparing_session": "Игра либо уже начата, либо ещё не начата, дождитесь начала новой",
@@ -37,41 +39,36 @@ class BotManager:
         "not_enough_players": "Слишком мало игроков!",
         "question_already_answered": "Этот вопрос уже был, выбери другой!",
         "can_not_answer": "nameplaceholder уже потратил свою попытку на ответ",
-        "no_session_to_stop": "Нет идущих игровых сессий"
+        "no_session_to_stop": "Нет идущих игровых сессий",
+        "too_many_players": "Слишком много игроков!"
     }
 
     def __init__(self, app: "Application"):
         self.app = app
         self.logger = getLogger("handler")
 
-    async def handle_updates(self, updates: list[Update]) -> None:
-        for update in updates:
-            chat_id = update.object.message.peer_id
-            text = update.object.message.text.split()
-            if len(text) > 1:
-                text = text[1]
-            player_id = update.object.message.from_id
-            action_type = update.object.message.action_type
-            payload_cmd = update.object.message.payload_cmd
-            payload_txt = update.object.message.payload_txt
+    async def handle_update(self, update: Update) -> None:
+        chat_id = update.object.message.peer_id
+        player_id = update.object.message.from_id
+        action_type = update.object.message.action_type
+        payload_cmd = update.object.message.payload_cmd
+        payload_txt = update.object.message.payload_txt
+        if action_type == "chat_invite_user":
+            await self.on_chat_inviting(chat_id=chat_id)
+        elif payload_cmd == 'START':
+            await self.on_start(chat_id=chat_id, player_id=player_id)
+        elif payload_cmd == 'PARTICIPATE':
+            await self.on_participate(chat_id=chat_id, player_id=player_id)
+        elif payload_cmd == 'RUN':
+            await self.on_run(chat_id=chat_id, player_id=player_id)
+        elif payload_cmd == "QUESTION":
+            await self.on_choosing_question(chat_id=chat_id, question_id=int(payload_txt), player_id=player_id)
+        elif payload_cmd == "ANSWER":
+            await self.on_choosing_answer(chat_id=chat_id, is_correct=payload_txt, player_id=player_id)
+        elif payload_cmd == "STOP":
+            await self.on_stop(chat_id=chat_id, player_id=player_id)
 
-            if action_type == "chat_invite_user":
-                await self.on_chat_inviting(chat_id=chat_id)
-            elif text == 'Старт':
-                await self.on_start(chat_id=chat_id, player_id=player_id)
-            elif text == 'Участвовать':
-                await self.on_participate(chat_id=chat_id, player_id=player_id)
-            elif text == 'Поехали':
-                await self.on_run(chat_id=chat_id, player_id=player_id)
-            elif payload_cmd == "chosen_question":
-                await self.on_choosing_question(chat_id=chat_id, question_id=int(payload_txt), player_id=player_id)
-            elif payload_cmd == "chosen_answer":
-                await self.on_choosing_answer(chat_id=chat_id, is_correct=payload_txt, player_id=player_id)
-            elif text == "Стоп":
-                await self.on_stop(chat_id=chat_id, player_id=player_id)
-
-
-    async def do_things_on_start(self):
+    async def on_bot_start(self, *_: list, **__: dict) -> None:
         chats = await self.app.store.game_sessions.list_chats(id_only=True)
         for chat_id in chats:
             await self.send_message(peer_id=chat_id, type="restart")
@@ -91,7 +88,7 @@ class BotManager:
                 session_id = chat_sessions[0]
                 session_state = await self.get_session_by_id(session_id, return_state=True)
                 answerer = session_state.last_answerer
-                questions = await self.get_questions_of_session(session_id)
+                questions = await self.get_questions_of_session(session_id, answered=False)
                 await self.send_message(peer_id=chat_id, type="choose_question", user_id=answerer, questions=questions)
 
         chats = await self.app.store.game_sessions.list_chats(id_only=True, req_cnd="question_asked")
@@ -100,7 +97,6 @@ class BotManager:
             if chat_sessions:
                 session_id = chat_sessions[0]
                 session_state = await self.get_session_by_id(session_id, return_state=True)
-                answerer = session_state.last_answerer
                 question_id = session_state.current_question
                 question = await self.app.store.quizzes.get_question_by_id(question_id)
                 await self.send_message(peer_id=chat_id, type="question", question=question)
@@ -117,13 +113,10 @@ class BotManager:
         await self.send_message(peer_id=chat.id, type="initial")
 
     async def on_start(self, chat_id: int, player_id: int) -> None:
-        chat_running_sessions = await self.list_sessions(chat_id=chat_id,
-                                                         creator_id=player_id,
+        chat_running_sessions = await self.list_sessions(chat_id=chat_id, creator_id=player_id,
                                                          req_cnds=["preparing",
-                                                                   "just_started",
-                                                                   "question_asked",
-                                                                   "answered_wrong",
-                                                                   "answered_right"])
+                                                                   "waiting_question",
+                                                                   "question_asked"])
         if chat_running_sessions:
             await self.send_message(peer_id=chat_id, type="wrong_start")
             return
@@ -148,6 +141,7 @@ class BotManager:
 
     async def on_run(self, chat_id: int, player_id: int) -> None:
         chat_sessions = await self.list_sessions(chat_id=chat_id, req_cnds=["preparing"])
+        await self.list_sessions(chat_id=chat_id, req_cnds=["preparing"])
         if chat_sessions:
             session_id = chat_sessions[0]
             session = await self.get_session_by_id(session_id)
@@ -155,15 +149,16 @@ class BotManager:
             await self.send_message(peer_id=chat_id, type="no_preparing_session")
             return
         if session.creator == player_id:
-            session_players = await self.list_players(session_id=session.id)
+            session_players = await self.list_players(session_id=session_id)
         else:
-            await self.send_message(peer_id=chat_id,
-                                    type="not_creator_to_run",
-                                    user_id=player_id,
+            await self.send_message(peer_id=chat_id, type="not_creator_to_run", user_id=player_id,
                                     creator_id=session.creator)
             return
-        if len(session_players) < 2:
+        if len(session_players) < MIN_PLAYERS:
             await self.send_message(peer_id=chat_id, type="not_enough_players")
+            return
+        if len(session_players) > MAX_PLAYERS:
+            await self.send_message(peer_id=chat_id, type="too_many_players")
             return
         questions = await self.add_questions_to_session(session.id)
         answerer = await self.set_answerer(session_id, to_set=session_players)
@@ -172,7 +167,7 @@ class BotManager:
         await self.send_message(peer_id=chat_id, type="choose_question", user_id=answerer.id, questions=questions)
 
     async def on_choosing_question(self, chat_id: int, question_id: int, player_id: int) -> None:
-        chat_sessions = await self.list_sessions(chat_id=chat_id, req_cnds=["just_started"])
+        chat_sessions = await self.list_sessions(chat_id=chat_id, req_cnds=["waiting_question"])
         if chat_sessions:
             session_id = chat_sessions[0]
             session_state = await self.get_session_by_id(session_id, return_state=True)
@@ -203,55 +198,54 @@ class BotManager:
             return
         await self.question_answered(chat_id, player_id, session_id, is_correct.lower())
 
-    async def question_answered(self, chat_id: int, player_id: int, session_id: int, is_correct: str):
+    async def question_answered(self, chat_id: int, player_id: int, session_id: int, is_correct: str) -> None:
         session_state = await self.get_session_by_id(session_id, return_state=True)
         current_question_id = session_state.current_question
         question = await self.app.store.quizzes.get_question_by_id(current_question_id)
-        answer = next((x for x in question.answers if x.is_correct), 'No correct answer')
-        questions = await self.get_questions_of_session(session_id)
         if is_correct == "true":
-            current_points = await self.add_points_to_player(player_id, question.points)
-            await self.restore_answering(session_id)
-            await self.send_message(peer_id=chat_id,
-                                    type="answered_correct",
-                                    user_id=player_id,
-                                    points=str(current_points),
-                                    current_points=str(current_points))
-            player = await self.set_answerer(session_id, to_set=player_id)
-            has_unanswered = await self.check_if_some_questions_unanswered(session_id)
-            if has_unanswered:
-                await self.set_session_state(session_id, "waiting_question")
-                await self.send_message(peer_id=chat_id, type="choose_question", user_id=player_id, questions=questions)
-            else:
-                results = await self.end_game_session(session_id)
-                await self.send_message(peer_id=chat_id, type="session_ended", results=results)
-
+            await self.on_correct_answer(chat_id, session_id, player_id, question, current_question_id)
         elif is_correct == "false":
-            current_points = await self.add_points_to_player(player_id, -question.points)
-            await self.send_message(peer_id=chat_id,
-                                    type="answered_wrong",
-                                    user_id=player_id,
-                                    points=str(-current_points),
-                                    current_points=str(current_points))
-            await self.forbid_answering(session_id, player_id)
+            await self.on_wrong_answer(chat_id, session_id, player_id, question, current_question_id)
 
-            no_players_left = await self.check_if_no_players_left(session_id)
-            if no_players_left:
-                print(2424242424)
-                has_unanswered = await self.check_if_some_questions_unanswered()
-                if has_unanswered:
-                    await self.restore_answering()
-                    await self.send_message(peer_id=chat_id, type="no_players_left", answer=answer)
-                    await self.send_message(peer_id=chat_id, type="choose_question", user_id=player_id, questions=questions)
-                else:
-                    results = await self.end_game_session(session_id)
-                    await self.send_message(peer_id=chat_id, type="session_ended", results=results)
-            else:
-                await self.send_message(peer_id=chat_id, type="question", question=question)
+    async def on_correct_answer(self, chat_id: int, session_id: int, player_id: int, question: Question,
+                                question_id: int) -> None:
+        current_points = await self.add_points_to_player(session_id, player_id, question.points)
+        await self.restore_answering(session_id)
+        await self.send_message(peer_id=chat_id, type="answered_correct",
+                                user_id=player_id, points=str(question.points),
+                                current_points=str(current_points))
+        await self.set_answerer(session_id, to_set=player_id)
+        await self.set_question_answered(question_id)
+        await self.after_answering(chat_id, session_id, player_id)
+
+    async def on_wrong_answer(self, chat_id: int, session_id: int, player_id: int, question: Question, question_id: int
+                              ) -> None:
+        current_points = await self.add_points_to_player(session_id, player_id, -question.points)
+        answer = next((x for x in question.answers if x.is_correct), 'No correct answer')
+        await self.send_message(peer_id=chat_id, type="answered_wrong", user_id=player_id, points=str(-question.points),
+                                current_points=str(current_points))
+        await self.forbid_answering(session_id, player_id)
+        no_players_left = await self.check_if_no_players_left(session_id)
+        if no_players_left:
+            await self.send_message(peer_id=chat_id, type="no_players_left", answer=answer.title)
+            await self.set_question_answered(question_id)
+            await self.after_answering(chat_id, session_id, player_id)
+        else:
+            await self.send_message(peer_id=chat_id, type="question", question=question)
+
+    async def after_answering(self, chat_id: int, session_id: int, player_id: int) -> None:
+        has_unanswered = await self.check_if_some_questions_unanswered(session_id)
+        if has_unanswered:
+            questions = await self.get_questions_of_session(session_id, answered=False)
+            await self.restore_answering(session_id)
+            await self.set_session_state(session_id, "waiting_question")
+            await self.send_message(peer_id=chat_id, type="choose_question", user_id=player_id, questions=questions)
+        else:
+            results = await self.end_game_session(session_id)
+            await self.send_message(peer_id=chat_id, type="quiz_ended", results=results)
 
     async def on_stop(self, chat_id: int, player_id: int) -> None:
-        chat_sessions = await self.list_sessions(chat_id=chat_id, req_cnds=["preparing",
-                                                                            "waiting_question",
+        chat_sessions = await self.list_sessions(chat_id=chat_id, req_cnds=["preparing", "waiting_question",
                                                                             "question_asked"])
         if chat_sessions:
             session_id = chat_sessions[0]
@@ -260,19 +254,14 @@ class BotManager:
             await self.send_message(peer_id=chat_id, type="no_session_to_stop")
             return
         if session.creator != player_id:
-            await self.send_message(peer_id=chat_id,
-                                    type="not_creator_to_stop",
-                                    user_id=player_id,
+            await self.send_message(peer_id=chat_id, type="not_creator_to_stop", user_id=player_id,
                                     creator_id=session.creator)
             return
-        await self.set_session_state(session.id, "ended")
-        await self.send_message(peer_id=chat_id, type="start_quiz")
+        results = await self.end_game_session(session_id)
+        await self.send_message(peer_id=chat_id, user_id=player_id, type="quiz_ended_on_stop", results=results)
+        self.logger.info(f"Session {session_id} stopped")
 
-    # Helper methods:
-
-    async def list_sessions(self, chat_id: int = None,
-                            req_cnds: list[str] = None,
-                            creator_id: int = None
+    async def list_sessions(self, chat_id: int = None, req_cnds: list[str] = None, creator_id: int = None
                             ) -> list[int]:
         game_sessions = await self.app.store.game_sessions.list_sessions(id_only=True,
                                                                          creator_id=creator_id,
@@ -280,8 +269,7 @@ class BotManager:
                                                                          req_cnds=req_cnds)
         return game_sessions
 
-    async def list_players(self, id_only: bool = True,
-                           session_id: Optional[int] = None,
+    async def list_players(self, id_only: bool = True, session_id: Optional[int] = None,
                            can_answer: Optional[bool] = None) -> list[int]:
         players = await self.app.store.game_sessions.list_players(id_only=id_only,
                                                                   session_id=session_id,
@@ -295,27 +283,23 @@ class BotManager:
         answerer = await self.app.store.game_sessions.set_answerer(session_id=session_id, to_set=to_set)
         return answerer
 
+    async def set_question_answered(self, question_id: int) -> None:
+        await self.app.store.game_sessions.set_question_answered(question_id)
+
     async def set_session_state(self, session_id: int, state_name: str) -> None:
         await self.app.store.game_sessions.set_session_state(session_id, state_name)
 
     async def add_questions_to_session(self, session_id: int) -> dict[str, dict[int, Question]]:
-        themes_limit = 3
-        questions_points = [100, 200, 300]
         questions = await self.app.store.game_sessions.add_questions_to_session(session_id,
-                                                                                themes_limit,
-                                                                                questions_points)
+                                                                                QUIZ_THEME_AMOUNT,
+                                                                                QUESTIONS_POINTS)
         return questions
 
-    async def get_questions_of_session(
-            self, session_id: int,
-            answered: Optional[bool] = None,
-            id_only: bool = False,
-            to_dict: bool = True,
-    ) -> Union[list[Question], dict[str, dict[int, Question]]]:
-
+    async def get_questions_of_session(self, session_id: int, answered: Optional[bool] = None, id_only: bool = False,
+                                       to_dict: bool = True) -> Union[list[Question], dict[str, dict[int, Question]]]:
         questions = await self.app.store.game_sessions.get_questions_of_session(session_id=session_id,
                                                                                 id_only=id_only,
-                                                                                answered=answered)
+                                                                                answered=answered,)
         if to_dict and not id_only:
             theme_ids = set([x.theme_id for x in questions])
             theme_ids_to_names = {}
@@ -325,8 +309,8 @@ class BotManager:
             questions_dict = defaultdict(dict)
             for x in questions:
                 questions_dict[theme_ids_to_names[x.theme_id]][x.points] = x
-            questions = questions_dict  # questions_dict ~ {theme1: {100: q1, 200: q2}, theme2: {100: q3, 200: q4},}
-        return questions
+            questions = questions_dict  # questions_dict ~ {theme1: {10: (qst1, is_answered), 20: (qst2, is_answered)},
+        return questions                                  # theme2: {10: (qst1, is_answered), 20: (qst2, is_answered)}}
 
     async def set_current_question(self, session_id: int, question_id: int) -> Question:
         question = await self.app.store.game_sessions.set_current_question(session_id, question_id)
@@ -339,37 +323,32 @@ class BotManager:
         session = await self.app.store.game_sessions.get_game_session_by_id(session_id)
         return session
 
-    async def check_if_question_already_answered(self, question_id: id, session_id: id):
-        answered_questions = await self.get_questions_of_session(session_id=session_id,
-                                                                 answered=True,
-                                                                 to_dict=False,
+    async def check_if_question_already_answered(self, question_id: id, session_id: id) -> bool:
+        answered_questions = await self.get_questions_of_session(session_id=session_id, answered=True, to_dict=False,
                                                                  id_only=True)
         return question_id in answered_questions
 
-    async def check_if_some_questions_unanswered(self, session_id: id):
-        unanswered_questions = await self.get_questions_of_session(session_id=session_id,
-                                                                   answered=False,
-                                                                   to_dict=False,
+    async def check_if_some_questions_unanswered(self, session_id: id) -> bool:
+        unanswered_questions = await self.get_questions_of_session(session_id=session_id, answered=False, to_dict=False,
                                                                    id_only=True)
         return any(unanswered_questions)
 
-    async def add_points_to_player(self, player_id: int, points: int) -> int:
-        current_points = await self.app.store.game_sessions.add_points_to_player(player_id, points)
+    async def add_points_to_player(self, session_id: int, player_id: int, points: int) -> int:
+        current_points = await self.app.store.game_sessions.add_points_to_player(session_id, player_id, points)
         return current_points
 
     async def restore_answering(self, session_id: int) -> None:
-        print(111111111111111111111167)
         await self.app.store.game_sessions.restore_answering(session_id)
 
     async def forbid_answering(self, session_id: int, player_id: int) -> None:
         await self.app.store.game_sessions.forbid_answering(session_id, player_id)
 
     async def check_if_no_players_left(self, session_id: int) -> bool:
-        await self.app.store.game_sessions.check_if_no_players_left(session_id)
+        return await self.app.store.game_sessions.check_if_no_players_left(session_id)
 
-    async def end_game_session(self, session_id):
+    async def end_game_session(self, session_id) -> dict[int, int]:
         await self.set_session_state(session_id=session_id, state_name="ended")
-        results = await self.app.store.game_sessions.get_session_results()
+        results = await self.app.store.game_sessions.get_session_results(session_id)
         return results
 
     async def send_message(self, peer_id: int, type: str, **kwargs) -> None:
@@ -394,5 +373,13 @@ class BotManager:
             params["message"] = params["message"].replace('answerplaceholder', answer)
         if "creator_id" in kwargs:
             name = await self.app.store.vk_api.get_user_name(kwargs["creator_id"])
-            params["message"] = params["message"].replace('creatorplaceholder', answer)
+            params["message"] = params["message"].replace('сreatorplaceholder', name)
+        if "results" in kwargs:
+            results_dict = kwargs["results"]
+            results_list = []
+            for id, points in results_dict.items():
+                name = await self.app.store.vk_api.get_user_name(id)
+                results_list.append((name, points))
+            results = ". ".join([f"{name}: {points}" for name, points in results_list])
+            params["message"] = params["message"].replace('resultsplaceholder', results)
         await self.app.store.vk_api.send_message(**params)

@@ -3,7 +3,6 @@ import logging
 from typing import Optional, TYPE_CHECKING
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import text
 from app.store.database import db
 
 if TYPE_CHECKING:
@@ -35,7 +34,5 @@ class Database:
     async def disconnect(self, *_: list, **__: dict) -> None:
         try:
             await self._engine.dispose()
-
         except Exception as err:
             logging.warning(err)
-
