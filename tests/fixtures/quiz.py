@@ -48,6 +48,7 @@ async def question_1(db_session, theme_1: Theme) -> Question:
         question = QuestionModel(
             title=title,
             theme_id=theme_1.id,
+            points=100,
             answers=[
                 AnswerModel(
                     title="well",
@@ -66,6 +67,7 @@ async def question_1(db_session, theme_1: Theme) -> Question:
         id=question.id,
         title=title,
         theme_id=theme_1.id,
+        points=question.points,
         answers=[
             Answer(
                 title=a.title,
@@ -83,6 +85,7 @@ async def question_2(db_session, theme_1: Theme) -> Question:
         question = QuestionModel(
             title=title,
             theme_id=theme_1.id,
+            points=200,
             answers=[
                 AnswerModel(
                     title="yep",
@@ -101,6 +104,7 @@ async def question_2(db_session, theme_1: Theme) -> Question:
         id=question.id,
         title=question.title,
         theme_id=theme_1.id,
+        points=question.points,
         answers=[
             Answer(
                 title=a.title,

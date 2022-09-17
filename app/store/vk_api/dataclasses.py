@@ -10,7 +10,7 @@ class UpdateMessage:
     peer_id: int
     action_type: Optional[str]
     payload_cmd: Optional[str]
-    payload_txt: Union[str, bool]
+    payload_txt: Union[str, bool, None]
 
 
 @dataclass

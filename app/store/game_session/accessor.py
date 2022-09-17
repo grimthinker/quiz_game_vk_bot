@@ -45,11 +45,12 @@ class GameSessionAccessor(BaseAccessor):
         return chat
 
     async def add_player_to_db(self, player_id: int) -> Player:
+        name = await self.app.store.vk_api.get_user_name(player_id)
         async with self.app.database.session() as session:
             async with session.begin():
-                player = PlayerModel(id=player_id)
+                player = PlayerModel(id=player_id, name=name)
                 session.add(player)
-        player = Player(id=player.id)
+        player = Player(id=player.id, name=player.name)
         return player
 
     async def create_game_session(self, chat_id: int, creator_id: int) -> GameSession:
@@ -242,7 +243,7 @@ class GameSessionAccessor(BaseAccessor):
                 if id_only:
                     return [player.id for player in curr]
                 else:
-                    return [Player(id=player.id) for player in curr]
+                    return [Player(id=player.id, name=player.name) for player in curr]
 
     async def get_player_by_id(self, id: int, dc=True) -> Union[Player, PlayerModel]:
         async with self.app.database.session() as session:
@@ -254,7 +255,7 @@ class GameSessionAccessor(BaseAccessor):
                     if not dc:
                         return player
                     else:
-                        return Player(id=player.id)
+                        return Player(id=player.id, name=player.name)
 
     async def get_game_session_by_id(self, id: int, dc: bool = True) -> Union[GameSession, GameSessionModel]:
         async with self.app.database.session() as session:
@@ -342,6 +343,7 @@ class GameSessionAccessor(BaseAccessor):
                 stmt = select(PlayersSessions).where(PlayersSessions.session_id == session_id)
                 result = await session.execute(stmt)
                 session_players = result.scalars()
-                for player in session_players:
-                    to_return[player.player_id] = player.points
+                for session_player in session_players:
+                    player = await self.get_player_by_id(session_player.player_id)
+                    to_return[player.name] = session_player.points
         return to_return

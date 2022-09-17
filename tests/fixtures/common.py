@@ -50,21 +50,25 @@ def db_session(server):
     return server.database.session
 
 
-@pytest.fixture(autouse=True, scope="function")
+@pytest.fixture(autouse=True)
 async def clear_db(server):
     yield
     try:
-        session = AsyncSession(server.database._engine)
+        session = server.database.session()
         connection = session.connection()
-        for table in server.database._db.metadata.tables:
+        tables = ("players", "chats", "themes", "association_players_sessions", "association_sessions_questions",
+                  "game_sessions", "session_states")
+        for table in tables:
             await session.execute(text(f"TRUNCATE {table} CASCADE"))
             await session.execute(text(f"ALTER SEQUENCE {table}_id_seq RESTART WITH 1"))
+            await session.commit()
 
-        await session.commit()
         connection.close()
-
     except Exception as err:
         logging.warning(err)
+
+
+
 
 
 @pytest.fixture
@@ -73,8 +77,9 @@ def config(server) -> Config:
 
 
 @pytest.fixture(autouse=True)
-def cli(aiohttp_client, event_loop, server) -> TestClient:
-    return event_loop.run_until_complete(aiohttp_client(server))
+async def cli(aiohttp_client, event_loop, server) -> TestClient:
+    client = await aiohttp_client(server)
+    yield client
 
 
 @pytest.fixture

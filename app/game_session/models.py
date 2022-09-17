@@ -23,6 +23,7 @@ class Chat:
 @dataclass
 class Player:
     id: int
+    name: str
 
 
 @dataclass
@@ -63,13 +64,6 @@ class SessionStateModel(db):
                             passive_deletes=True,
                             )
 
-    def to_dc(self) -> SessionState:
-        return SessionState(session_id=self.session_id,
-                            state_name=self.state_name,
-                            current_question=self.current_question,
-                            last_answerer=self.last_answerer,
-                            time_updated=self.time_updated)
-
 
 class StatesEnum(enum.Enum):
     PREPARING = 0
@@ -104,6 +98,7 @@ class PlayersSessions(db):
 class PlayerModel(db):
     __tablename__ = "players"
     id = Column(BigInteger, primary_key=True)
+    name = Column(Text, nullable=False, default="no name")
     association_players_sessions = relationship(PlayersSessions, back_populates="players")
 
 
@@ -115,9 +110,3 @@ class GameSessionModel(db):
 
     state = relationship(SessionStateModel, back_populates="session", uselist=False)
     association_players_sessions = relationship("PlayersSessions", back_populates="sessions")
-
-    def to_dc(self, state) -> GameSession:
-        return GameSession(id=self.id,
-                           chat_id=Chat(self.chat_id),
-                           creator=Player(self.creator),
-                           state=state)

@@ -33,22 +33,23 @@ class MessageHelper:
     no_session_to_stop = "Нет идущих игровых сессий"
     too_many_players = "Слишком много игроков!"
     no_results = "В базе нет результатов для этого чата!"
+    no_question_in_db = "В базе не найдено вопросов! Сообщите администратору!"
 
     @classmethod
     def started(cls, name):
-        return f"Игрок {cls.mention(name)} нажал 'Старт'! {cls.mention(name)}, дождись других игроков, прежде чем продолжить"
+        return f"Игрок {name} нажал 'Старт'! {name}, дождись других игроков, прежде чем продолжить"
 
     @classmethod
     def new_player_added(cls, name):
-        return f"Добавлен игрок {cls.mention(name)}"
+        return f"Добавлен игрок {name}"
 
     @classmethod
     def player_already_added(cls, name):
-        return f"Игрок {cls.mention(name)} уже добавлен"
+        return f"Игрок {name} уже добавлен"
 
     @classmethod
     def choose_question(cls, name):
-        return f"{cls.mention(name)}, выбирай вопрос!"
+        return f"{name}, выбирай вопрос!"
 
     @classmethod
     def question(cls, question):
@@ -56,11 +57,11 @@ class MessageHelper:
 
     @classmethod
     def answered_correct(cls, name, points, curpoints):
-        return f"{cls.mention(name)} дал правильный ответ! Игрок получает {points} очков, текущая сумма: {curpoints}"
+        return f"{name} дал правильный ответ! Игрок получает {points} очков, текущая сумма: {curpoints}"
 
     @classmethod
     def answered_wrong(cls, name, points, curpoints):
-        return f"Неверный ответ! {cls.mention(name)} теряет {points} очков, текущая сумма: {curpoints}"
+        return f"Неверный ответ! {name} теряет {points} очков, текущая сумма: {curpoints}"
 
     @classmethod
     def quiz_ended(cls, results):
@@ -68,7 +69,7 @@ class MessageHelper:
 
     @classmethod
     def quiz_ended_on_stop(cls, name, results):
-        return f"Игра окончена игроком {cls.mention(name)}, результаты: {cls.to_str(results)}"
+        return f"Игра окончена игроком {name}, результаты: {cls.to_str(results)}"
 
     @classmethod
     def just_show_results(cls, results):
@@ -80,32 +81,27 @@ class MessageHelper:
 
     @classmethod
     def not_last_answerer(cls, name):
-        return f"Выбирать вопрос сейчас может только {cls.mention(name)}"
+        return f"Выбирать вопрос сейчас может только {name}"
 
     @classmethod
     def not_creator_to_run(cls, name, creator_name):
-        return f"{cls.mention(name)}, запустить игру может тот, кто нажал 'Старт' ({creator_name})"
+        return f"{name}, запустить игру может тот, кто нажал 'Старт' ({creator_name})"
 
     @classmethod
     def not_creator_to_stop(cls, name, creator_name):
-        return f"{cls.mention(name)}, преждевременно завершить игру может тот, кто нажал 'Старт' ({creator_name})"
+        return f"{name}, преждевременно завершить игру может тот, кто нажал 'Старт' ({creator_name})"
 
     @classmethod
     def can_not_answer(cls, name):
-        return f"{cls.mention(name)} уже потратил свою попытку на ответ"
+        return f"{name} уже потратил свою попытку на ответ"
 
     @classmethod
     def to_str(cls, results_dict: dict):
         results_list = []
-        for id, points in results_dict.items():
-            name = cls.mention(id)
+        for name, points in results_dict.items():
             results_list.append((name, points))
         results = ". ".join([f"{name}: {points}" for name, points in results_list])
         return results
-
-    @classmethod
-    def mention(cls, uid):
-        return f"[id{uid}|user.first_name]"
 
 
 class KeyboardHelper:

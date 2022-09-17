@@ -27,6 +27,7 @@ class ThemeAddView(AuthRequiredMixin, View):
     async def post(self):
         title = self.data["title"]
         existing_theme = await self.store.quizzes.get_theme_by_title(title=title)
+        print(existing_theme)
         if existing_theme:
             raise HTTPConflict
         theme = await self.store.quizzes.create_theme(title=title)
