@@ -1,3 +1,4 @@
+import enum
 from dataclasses import dataclass
 from typing import Optional
 
@@ -10,7 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Text,
-    Table
+    Table, DateTime, func
 )
 
 
@@ -30,13 +31,13 @@ class SessionState:
     state_name: str
     current_question: Optional[int] = None
     last_answerer: Optional[int] = None
-    ended: Optional[str] = None
+    time_updated: Optional[str] = None
 
 
 @dataclass
 class GameSession:
     id: int
-    chat_id: int
+    chat_id: Chat
     creator: Player
     state: SessionState
 
@@ -52,7 +53,7 @@ class SessionStateModel(db):
     state_name = Column(Integer, nullable=False)
     current_question = Column(BigInteger, ForeignKey("questions.id", ondelete="CASCADE"), nullable=True)
     last_answerer = Column(BigInteger, ForeignKey("players.id", ondelete="CASCADE"), nullable=True)
-    ended = Column(Text, nullable=True)
+    time_updated = Column(DateTime(timezone=True), onupdate=func.now())
 
     session = relationship("GameSessionModel", back_populates="state", uselist=False)
     session_questions = relationship(
@@ -62,10 +63,21 @@ class SessionStateModel(db):
                             passive_deletes=True,
                             )
 
-    states = {"preparing": 0,
-              "waiting_question": 2,
-              "question_asked": 3,
-              "ended": 9}
+    def to_dc(self) -> SessionState:
+        return SessionState(session_id=self.session_id,
+                            state_name=self.state_name,
+                            current_question=self.current_question,
+                            last_answerer=self.last_answerer,
+                            time_updated=self.time_updated)
+
+
+class StatesEnum(enum.Enum):
+    PREPARING = 0
+    WAITING_QUESTION = 2
+    WAITING_ANSWER = 3
+    ENDED = 9
+
+    SESSION_NEEDED = 11 # not state, for chat filtering
 
 
 class SessionsQuestions(db):
@@ -104,3 +116,8 @@ class GameSessionModel(db):
     state = relationship(SessionStateModel, back_populates="session", uselist=False)
     association_players_sessions = relationship("PlayersSessions", back_populates="sessions")
 
+    def to_dc(self, state) -> GameSession:
+        return GameSession(id=self.id,
+                           chat_id=Chat(self.chat_id),
+                           creator=Player(self.creator),
+                           state=state)

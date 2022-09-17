@@ -48,8 +48,7 @@ def make_update_from_raw(raw_update: dict) -> Update:
     payload_cmd = payload_txt = None
     payload = message.get("payload", None)
     if isinstance(payload, str):
-        payload = payload.strip('[]""')
-        payload = payload.split()
+        payload = json.loads(payload)
         if len(payload) == 2:
             payload_txt = payload[1]
         payload_cmd = payload[0]
@@ -63,48 +62,6 @@ def make_update_from_raw(raw_update: dict) -> Update:
     update_object = UpdateObject(message=update_message)
     update = Update(type=type, object=update_object)
     return update
-
-
-def get_keyboard_json(type: str, **kwargs) -> str:
-
-    def _button(label: str, payload: Optional[str] = None, color: Optional[str] = None) -> dict:
-        button = {"action": {"type": "text", "label": label}}
-        if payload:
-            button["action"]["payload"] = [payload]
-        if color:
-            button["color"] = color
-        return button
-
-    buttons = []
-    if type in ["initial", "quiz_ended", "quiz_ended_on_stop"]:
-        buttons = [[_button("Старт", payload="START")]]
-    elif type in ["preparing", "player_already_added", "not_enough_players", "not_creator_to_run", "new_player_added"]:
-        buttons = [[_button("Участвовать", payload="PARTICIPATE")], [_button("Поехали", payload="RUN")]]
-    elif type in ["question"]:
-        if "question" in kwargs:
-            answers = kwargs["question"].answers
-            for answer in answers:
-                payload = " ".join(["ANSWER", str(answer.is_correct)])
-                buttons.append([_button(label=answer.title, payload=payload)])
-            buttons.append([_button("Завершить игру", payload="STOP")])
-    elif type == "choose_question":
-        if "questions" in kwargs:
-            questions = kwargs["questions"]     # questions ~ {theme1: {100: q1, 200: q2}, theme2: {100: q3, 200: q4},}
-            for theme_name, theme_questions in questions.items():
-                line = []
-                for points, question in theme_questions.items():
-                    text = " ".join([theme_name, str(points)])
-                    payload = " ".join(["QUESTION", str(question.id)])
-                    line.append(_button(label=text, payload=payload))
-                buttons.append(line)
-            buttons.append([_button("Завершить игру", payload="STOP")])
-    keyboard = {
-        "one_time": False,
-        "buttons": buttons,
-        "inline": False
-    }
-    if buttons:
-        return json.dumps(keyboard)
 
 
 def check_answers(answers: list) -> bool:

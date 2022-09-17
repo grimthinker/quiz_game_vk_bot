@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 
 @dataclass
@@ -10,7 +10,7 @@ class UpdateMessage:
     peer_id: int
     action_type: Optional[str]
     payload_cmd: Optional[str]
-    payload_txt: Optional[str]
+    payload_txt: Union[str, bool]
 
 
 @dataclass
