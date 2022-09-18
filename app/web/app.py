@@ -48,7 +48,7 @@ class View(AiohttpView):
     @property
     def data(self) -> dict:
         data = self.request.get("data") or self.request.get("json") or {}
-        data.update(self.request.get('querystring', {}))
+        data.update(self.request.get("querystring", {}))
         return data
 
 

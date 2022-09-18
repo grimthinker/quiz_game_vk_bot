@@ -52,13 +52,15 @@ def make_update_from_raw(raw_update: dict) -> Update:
         if len(payload) == 2:
             payload_txt = payload[1]
         payload_cmd = payload[0]
-    update_message = UpdateMessage(id=message_id,
-                                   from_id=from_id,
-                                   text=text,
-                                   peer_id=peer_id,
-                                   action_type=action_type,
-                                   payload_cmd=payload_cmd,
-                                   payload_txt=payload_txt)
+    update_message = UpdateMessage(
+        id=message_id,
+        from_id=from_id,
+        text=text,
+        peer_id=peer_id,
+        action_type=action_type,
+        payload_cmd=payload_cmd,
+        payload_txt=payload_txt,
+    )
     update_object = UpdateObject(message=update_message)
     update = Update(type=type, object=update_object)
     return update

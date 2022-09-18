@@ -3,7 +3,14 @@ from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.future import select
 
-from app.game_session.models import Chat, Player, GameSession, GameSessionModel, SessionStateModel, StatesEnum
+from app.game_session.models import (
+    Chat,
+    Player,
+    GameSession,
+    GameSessionModel,
+    SessionStateModel,
+    StatesEnum,
+)
 from app.store import Store
 from tests.utils import check_empty_table_exists
 
@@ -17,8 +24,12 @@ class TestQuestionsStore:
         await check_empty_table_exists(cli, "association_players_sessions")
         await check_empty_table_exists(cli, "association_sessions_questions")
 
-    async def test_create_session(self, cli, chat_1: Chat, creator_1: Player, store: Store):
-        game_session = await store.game_sessions.create_game_session(chat_id=chat_1.id, creator_id=creator_1.id)
+    async def test_create_session(
+        self, cli, chat_1: Chat, creator_1: Player, store: Store
+    ):
+        game_session = await store.game_sessions.create_game_session(
+            chat_id=chat_1.id, creator_id=creator_1.id
+        )
         assert type(game_session) is GameSession
 
         async with cli.app.database.session() as session:

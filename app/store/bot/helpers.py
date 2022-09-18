@@ -26,8 +26,12 @@ class MessageHelper:
     preparing = "Для участия в игре нажмите кнопку 'Участвовать'\n Когда все будут готовы, нажмите 'Поехали'"
     start_quiz = "Игра началась!"
     wrong_start = "Чтобы начать новую игру, завершите текущюю"
-    no_preparing_session = "Игра либо уже начата, либо ещё не начата, дождитесь начала новой"
-    no_running_session = "Сейчас нельзя выбирать/отвечать на вопросы, сначала начните игру"
+    no_preparing_session = (
+        "Игра либо уже начата, либо ещё не начата, дождитесь начала новой"
+    )
+    no_running_session = (
+        "Сейчас нельзя выбирать/отвечать на вопросы, сначала начните игру"
+    )
     not_enough_players = "Слишком мало игроков!"
     question_already_answered = "Этот вопрос уже был, выбери другой!"
     no_session_to_stop = "Нет идущих игровых сессий"
@@ -61,7 +65,9 @@ class MessageHelper:
 
     @classmethod
     def answered_wrong(cls, name, points, curpoints):
-        return f"Неверный ответ! {name} теряет {points} очков, текущая сумма: {curpoints}"
+        return (
+            f"Неверный ответ! {name} теряет {points} очков, текущая сумма: {curpoints}"
+        )
 
     @classmethod
     def quiz_ended(cls, results):
@@ -106,7 +112,12 @@ class MessageHelper:
 
 class KeyboardHelper:
     @classmethod
-    def _button(cls, label: str, payload: Union[int, str, None] = None, color: Optional[str] = None) -> dict:
+    def _button(
+        cls,
+        label: str,
+        payload: Union[int, str, None] = None,
+        color: Optional[str] = None,
+    ) -> dict:
         button = {"action": {"type": "text", "label": label}}
         if payload:
             button["action"]["payload"] = payload
@@ -116,26 +127,27 @@ class KeyboardHelper:
 
     @classmethod
     def _keyboard(cls, buttons: list[list[dict]]) -> str:
-        keyboard = {
-            "one_time": False,
-            "buttons": buttons,
-            "inline": False
-        }
+        keyboard = {"one_time": False, "buttons": buttons, "inline": False}
         return json.dumps(keyboard)
-
 
     @classmethod
     def generate_initial_keyboard(cls):
-        buttons = [[cls._button("Старт", payload=_to_json(CmdEnum.START))],
-                   [cls._button("Предыдущие результаты", payload=_to_json(CmdEnum.RESULTS))]]
+        buttons = [
+            [cls._button("Старт", payload=_to_json(CmdEnum.START))],
+            [cls._button("Предыдущие результаты", payload=_to_json(CmdEnum.RESULTS))],
+        ]
         return cls._keyboard(buttons=buttons)
 
     @classmethod
     def generate_preparing_keyboard(cls):
-        buttons = [[cls._button("Участвовать", payload=_to_json(CmdEnum.PARTICIPATE))],
-                   [cls._button("Поехали", payload=_to_json(CmdEnum.RUN))],
-                   [cls._button("Завершить игру", payload=_to_json(CmdEnum.STOP)),
-                    cls._button("Предыдущие результаты", payload=_to_json(CmdEnum.RESULTS))]]
+        buttons = [
+            [cls._button("Участвовать", payload=_to_json(CmdEnum.PARTICIPATE))],
+            [cls._button("Поехали", payload=_to_json(CmdEnum.RUN))],
+            [
+                cls._button("Завершить игру", payload=_to_json(CmdEnum.STOP)),
+                cls._button("Предыдущие результаты", payload=_to_json(CmdEnum.RESULTS)),
+            ],
+        ]
         return cls._keyboard(buttons=buttons)
 
     @classmethod
@@ -148,8 +160,12 @@ class KeyboardHelper:
                 payload = json.dumps([CmdEnum.QUESTION.value, question.id])
                 line.append(cls._button(label=text, payload=payload))
             buttons.append(line)
-        buttons.append([cls._button("Завершить игру", payload=_to_json(CmdEnum.STOP)),
-                        cls._button("Текущие результаты", payload=_to_json(CmdEnum.RESULTS))])
+        buttons.append(
+            [
+                cls._button("Завершить игру", payload=_to_json(CmdEnum.STOP)),
+                cls._button("Текущие результаты", payload=_to_json(CmdEnum.RESULTS)),
+            ]
+        )
         return cls._keyboard(buttons=buttons)
 
     @classmethod
@@ -159,6 +175,10 @@ class KeyboardHelper:
             text = answer.title
             payload = json.dumps([CmdEnum.ANSWER.value, answer.is_correct])
             buttons.append([cls._button(label=text, payload=payload)])
-        buttons.append([cls._button("Завершить игру", payload=_to_json(CmdEnum.STOP)),
-                        cls._button("Текущие результаты", payload=_to_json(CmdEnum.RESULTS))])
+        buttons.append(
+            [
+                cls._button("Завершить игру", payload=_to_json(CmdEnum.STOP)),
+                cls._button("Текущие результаты", payload=_to_json(CmdEnum.RESULTS)),
+            ]
+        )
         return cls._keyboard(buttons=buttons)

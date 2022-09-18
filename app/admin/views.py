@@ -17,15 +17,15 @@ class AdminLoginView(View):
         email = self.data["email"]
         existed_admin = await self.store.admins.get_by_email(email)
         if not existed_admin:
-            raise HTTPForbidden(reason='no admin with that email')
+            raise HTTPForbidden(reason="no admin with that email")
 
         password = self.data["password"]
         if not existed_admin.is_password_valid(password):
-            raise HTTPForbidden(reason='wrong password')
+            raise HTTPForbidden(reason="wrong password")
 
         raw_admin = AdminSchema().dump(existed_admin)
         session = await new_session(request=self.request)
-        session['admin'] = raw_admin
+        session["admin"] = raw_admin
         return json_response(data=raw_admin)
 
 

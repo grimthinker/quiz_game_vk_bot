@@ -7,18 +7,18 @@ from app.quiz.schemes import (
     ThemeListSchema,
     ThemeSchema,
     AnswerSchema,
-    )
+)
 from app.web.app import View
 from app.web.schemes import OkResponseSchema
 from app.web.utils import json_response, check_answers
 
 
 from aiohttp.web_exceptions import (
-                                    HTTPConflict,
-                                    HTTPUnauthorized,
-                                    HTTPBadRequest,
-                                    HTTPNotFound
-                                    )
+    HTTPConflict,
+    HTTPUnauthorized,
+    HTTPBadRequest,
+    HTTPNotFound,
+)
 
 
 class ThemeAddView(AuthRequiredMixin, View):
@@ -38,7 +38,7 @@ class ThemeListView(AuthRequiredMixin, View):
     @response_schema(ThemeListSchema)
     async def get(self):
         themes = await self.store.quizzes.list_themes()
-        return json_response(data=ThemeListSchema().dump({'themes': themes}))
+        return json_response(data=ThemeListSchema().dump({"themes": themes}))
 
 
 class QuestionAddView(AuthRequiredMixin, View):
@@ -61,13 +61,17 @@ class QuestionAddView(AuthRequiredMixin, View):
         answers_list = await self.store.quizzes.create_answers_list(answers=answers)
         points = self.data["points"]
         question = await self.store.quizzes.create_question(
-                                                            title=title,
-                                                            theme_id=theme_id,
-                                                            points=points,
-                                                            answers=answers_list
-                                                            )
+            title=title, theme_id=theme_id, points=points, answers=answers_list
+        )
         raw_answers = [AnswerSchema().dump(answer) for answer in answers_list]
-        return json_response(data={"id": question.id, "theme_id": theme_id, "answers": raw_answers, "title": title})
+        return json_response(
+            data={
+                "id": question.id,
+                "theme_id": theme_id,
+                "answers": raw_answers,
+                "title": title,
+            }
+        )
 
 
 class QuestionListView(AuthRequiredMixin, View):
@@ -83,6 +87,11 @@ class QuestionListView(AuthRequiredMixin, View):
         data = {"questions": []}
         for q in questions:
             raw_answers = [AnswerSchema().dump(answer) for answer in q.answers]
-            question = {"id": q.id, "theme_id": q.theme_id, "answers": raw_answers, "title": q.title}
+            question = {
+                "id": q.id,
+                "theme_id": q.theme_id,
+                "answers": raw_answers,
+                "title": q.title,
+            }
             data["questions"].append(question)
         return json_response(data=data)

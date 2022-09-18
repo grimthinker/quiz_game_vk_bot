@@ -71,7 +71,7 @@ class TestQuestionsStore:
     ):
         with pytest.raises(IntegrityError) as exc_info:
             await store.quizzes.create_question(
-                question_1.title, question_1.theme_id,question_1.points, answers
+                question_1.title, question_1.theme_id, question_1.points, answers
             )
         assert exc_info.value.orig.pgcode == "23505"
 
@@ -127,6 +127,7 @@ class TestQuestionAddView:
                     id=data["data"]["id"],
                     title="How many legs does an octopus have?",
                     theme_id=1,
+                    points=100,
                     answers=[
                         Answer(title="2", is_correct=False),
                         Answer(title="8", is_correct=True),

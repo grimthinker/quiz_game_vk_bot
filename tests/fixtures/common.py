@@ -62,8 +62,16 @@ async def clear_db(server):
     try:
         session = server.database.session()
         connection = session.connection()
-        tables = ("players", "chats", "themes", "association_players_sessions", "association_sessions_questions",
-                  "game_sessions", "questions", "session_states")
+        tables = (
+            "players",
+            "chats",
+            "themes",
+            "association_players_sessions",
+            "association_sessions_questions",
+            "game_sessions",
+            "questions",
+            "session_states",
+        )
         for table in tables:
             await session.execute(text(f"TRUNCATE {table} CASCADE"))
             await session.commit()
@@ -73,9 +81,6 @@ async def clear_db(server):
         connection.close()
     except Exception as err:
         logging.warning(err)
-
-
-
 
 
 @pytest.fixture

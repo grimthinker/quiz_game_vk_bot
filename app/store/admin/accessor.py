@@ -16,8 +16,8 @@ class AdminAccessor(BaseAccessor):
     async def connect(self, app: "Application"):
         await self.delete_admin(email=self.app.config.admin.email)
         await self.create_admin(
-            email=app.config.admin.email,
-            password=app.config.admin.password)
+            email=app.config.admin.email, password=app.config.admin.password
+        )
 
     async def get_by_email(self, email: str) -> typing.Optional[Admin]:
         async with self.app.database.session() as session:
@@ -40,4 +40,3 @@ class AdminAccessor(BaseAccessor):
             async with session.begin():
                 stmt = delete(AdminModel).where(AdminModel.email == email)
                 await session.execute(stmt)
-

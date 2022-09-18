@@ -10,4 +10,6 @@ class GameSessionListView(AuthRequiredMixin, View):
     @response_schema(GameSessionListSchema)
     async def get(self):
         game_sessions = await self.store.game_sessions.list_game_sessions()
-        return json_response(data=GameSessionListSchema().dump({'game_sessions': game_sessions}))
+        return json_response(
+            data=GameSessionListSchema().dump({"game_sessions": game_sessions})
+        )
