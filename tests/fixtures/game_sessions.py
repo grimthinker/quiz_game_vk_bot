@@ -50,14 +50,14 @@ async def creator_2(db_session: AsyncSession) -> Player:
 
 @pytest.fixture
 async def chat_1(db_session: AsyncSession) -> Chat:
-    chat = ChatModel(id=1)
+    chat = ChatModel(id=1000)
     async with db_session.begin() as session:
         session.add(chat)
     return Chat(id=chat.id)
 
 @pytest.fixture
 async def chat_2(db_session: AsyncSession) -> Chat:
-    chat = ChatModel(id=2)
+    chat = ChatModel(id=2000)
     async with db_session.begin() as session:
         session.add(chat)
     return Chat(id=chat.id)

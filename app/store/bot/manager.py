@@ -70,6 +70,7 @@ class BotManager:
                 questions = await self.get_questions_of_session(session_id, answered=False)
                 if not questions:
                     await self.send_message(peer_id=chat_id, message=MessageHelper.no_question_in_db)
+                    continue
                 await self.send_message(peer_id=chat_id,
                                         message=MessageHelper.choose_question(name=answerer),
                                         keyboard=KeyboardHelper.generate_questions_keyboard(questions=questions))
@@ -184,8 +185,9 @@ class BotManager:
             await self.send_message(peer_id=chat_id, message=MessageHelper.no_running_session)
             return
         if not player_id == session_state.last_answerer:
+            last_answerer = await self.app.store.game_sessions.get_player_by_id(session_state.last_answerer)
             await self.send_message(peer_id=chat_id,
-                                    message=MessageHelper.not_last_answerer(name=session_state.last_answerer))
+                                    message=MessageHelper.not_last_answerer(name=last_answerer.name))
             return
         is_answered = await self.check_if_question_already_answered(question_id, session_id)
         if is_answered:
@@ -249,7 +251,7 @@ class BotManager:
             await self.app.store.game_sessions.set_question_answered(question_id)
             await self.after_answering(chat_id, session_id, player_id)
         else:
-            await self.send_message(peer_id=chat_id, message=MessageHelper.question(question=question),
+            await self.send_message(peer_id=chat_id, message=MessageHelper.question(question=question.title),
                                     keyboard=KeyboardHelper.generate_answers_keyboard(question=question))
 
     async def after_answering(self, chat_id: int, session_id: int, player_id: int) -> None:
@@ -309,8 +311,6 @@ class BotManager:
         questions = await self.app.store.game_sessions.get_questions_of_session(session_id=session_id,
                                                                                 id_only=id_only,
                                                                                 answered=answered,)
-        if not questions:
-            return
         if to_dict and not id_only:
             theme_ids = set([x.theme_id for x in questions])
             theme_ids_to_names = {}
@@ -333,6 +333,7 @@ class BotManager:
     async def check_if_question_already_answered(self, question_id: id, session_id: id) -> bool:
         answered_questions = await self.get_questions_of_session(session_id=session_id, answered=True, to_dict=False,
                                                                  id_only=True)
+
         return question_id in answered_questions
 
     async def check_if_some_questions_unanswered(self, session_id: id) -> bool:

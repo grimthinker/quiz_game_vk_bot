@@ -37,7 +37,13 @@ def server():
     app.on_startup.append(app.database.connect)
     app.on_shutdown.append(app.database.disconnect)
 
-    return app
+    yield app
+
+
+@pytest.fixture(autouse=True)
+def reset_send_message_mock(store):
+    yield
+    store.vk_api.send_message.reset_mock()
 
 
 @pytest.fixture
@@ -57,12 +63,13 @@ async def clear_db(server):
         session = server.database.session()
         connection = session.connection()
         tables = ("players", "chats", "themes", "association_players_sessions", "association_sessions_questions",
-                  "game_sessions", "session_states")
+                  "game_sessions", "questions", "session_states")
         for table in tables:
             await session.execute(text(f"TRUNCATE {table} CASCADE"))
+            await session.commit()
+        for table in ["questions", "game_sessions", "themes"]:
             await session.execute(text(f"ALTER SEQUENCE {table}_id_seq RESTART WITH 1"))
             await session.commit()
-
         connection.close()
     except Exception as err:
         logging.warning(err)
