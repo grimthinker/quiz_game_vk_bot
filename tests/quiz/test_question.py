@@ -19,8 +19,9 @@ class TestQuestionsStore:
         self, cli, store: Store, theme_1: Theme, answers: list[Answer]
     ):
         question_title = "title"
+        points = 100
         question = await store.quizzes.create_question(
-            question_title, theme_1.id, answers
+            question_title, theme_1.id, points, answers
         )
         assert type(question) is Question
 
@@ -46,7 +47,7 @@ class TestQuestionsStore:
     ):
         question_title = "title"
         with pytest.raises(IntegrityError) as exc_info:
-            await store.quizzes.create_question(question_title, 1, answers)
+            await store.quizzes.create_question(question_title, 1, 200, answers)
         assert exc_info.value.orig.pgcode == "23503"
 
     async def test_create_question_none_theme_id(
@@ -54,7 +55,15 @@ class TestQuestionsStore:
     ):
         question_title = "title"
         with pytest.raises(IntegrityError) as exc_info:
-            await store.quizzes.create_question(question_title, None, answers)
+            await store.quizzes.create_question(question_title, None, 200, answers)
+        assert exc_info.value.orig.pgcode == "23502"
+
+    async def test_create_question_none_points(
+        self, cli, store: Store, answers: list[Answer]
+    ):
+        question_title = "title"
+        with pytest.raises(IntegrityError) as exc_info:
+            await store.quizzes.create_question(question_title, 1, None, answers)
         assert exc_info.value.orig.pgcode == "23502"
 
     async def test_create_question_unique_title_constraint(
@@ -62,7 +71,7 @@ class TestQuestionsStore:
     ):
         with pytest.raises(IntegrityError) as exc_info:
             await store.quizzes.create_question(
-                question_1.title, question_1.theme_id, answers
+                question_1.title, question_1.theme_id, question_1.points, answers
             )
         assert exc_info.value.orig.pgcode == "23505"
 
@@ -72,7 +81,8 @@ class TestQuestionsStore:
     async def test_list_questions(
         self, cli, store: Store, question_1: Question, question_2: Question
     ):
-        questions = await store.quizzes.list_questions()
+        async with cli.app.database.session.begin() as db_session:
+            questions = await store.quizzes.list_questions(db_session=db_session)
         assert questions == [question_1, question_2]
 
     async def test_check_cascade_delete(self, cli, question_1: Question):
@@ -97,6 +107,7 @@ class TestQuestionAddView:
             json={
                 "title": "How many legs does an octopus have?",
                 "theme_id": theme_1.id,
+                "points": 100,
                 "answers": [
                     {
                         "title": "2",
@@ -117,6 +128,7 @@ class TestQuestionAddView:
                     id=data["data"]["id"],
                     title="How many legs does an octopus have?",
                     theme_id=1,
+                    points=100,
                     answers=[
                         Answer(title="2", is_correct=False),
                         Answer(title="8", is_correct=True),
@@ -131,6 +143,7 @@ class TestQuestionAddView:
             json={
                 "title": "How many legs does an octopus have?",
                 "theme_id": 1,
+                "points": 100,
                 "answers": [
                     {
                         "title": "2",
@@ -153,6 +166,7 @@ class TestQuestionAddView:
             json={
                 "title": "How many legs does an octopus have?",
                 "theme_id": 1,
+                "points": 100,
                 "answers": [
                     {
                         "title": "2",
@@ -173,6 +187,7 @@ class TestQuestionAddView:
             json={
                 "title": "How many legs does an octopus have?",
                 "theme_id": theme_1.id,
+                "points": 100,
                 "answers": [
                     {
                         "title": "2",
@@ -193,6 +208,7 @@ class TestQuestionAddView:
             json={
                 "title": "How many legs does an octopus have?",
                 "theme_id": theme_1.id,
+                "points": 100,
                 "answers": [
                     {
                         "title": "2",
@@ -213,6 +229,7 @@ class TestQuestionAddView:
             json={
                 "title": "How many legs does an octopus have?",
                 "theme_id": theme_1.id,
+                "points": 100,
                 "answers": [
                     {
                         "title": "2",

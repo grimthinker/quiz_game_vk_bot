@@ -36,41 +36,34 @@ def error_json_response(
 
 
 def make_update_from_raw(raw_update: dict) -> Update:
-        type = raw_update["type"]
-        object = raw_update["object"]
-        message = object["message"]
-        message_id = message["id"]
-        text = message["text"]
-        peer_id = message["peer_id"]
-        from_id = message["from_id"]
-        action = message.get("action", None)
-        action_type = action["type"] if action else None
-        update_message = UpdateMessage(id=message_id,
-                                       from_id=from_id,
-                                       text=text,
-                                       peer_id=peer_id,
-                                       action_type=action_type)
-        update_object = UpdateObject(message=update_message)
-        update = Update(type=type, object=update_object)
-        return update
-
-
-def get_keyboard_json(type: str) -> str:
-    def _button(label: str) -> dict:
-        return {"action": {"type": "text", "label": label}}
-
-    buttons = [[]]
-    if type == "initial":
-        buttons = [[_button("Старт")]]
-    elif type == "preparing":
-        buttons = [[_button("Участвовать")], [_button("Поехали")]]
-    keyboard = {
-        "one_time": False,
-        "buttons": buttons,
-        "inline": False
-    }
-    if buttons != [[]]:
-        return json.dumps(keyboard)
+    type = raw_update["type"]
+    object = raw_update["object"]
+    message = object["message"]
+    message_id = message["id"]
+    text = message["text"]
+    peer_id = message["peer_id"]
+    from_id = message["from_id"]
+    action = message.get("action", None)
+    action_type = action["type"] if action else None
+    payload_cmd = payload_txt = None
+    payload = message.get("payload", None)
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+        if len(payload) == 2:
+            payload_txt = payload[1]
+        payload_cmd = payload[0]
+    update_message = UpdateMessage(
+        id=message_id,
+        from_id=from_id,
+        text=text,
+        peer_id=peer_id,
+        action_type=action_type,
+        payload_cmd=payload_cmd,
+        payload_txt=payload_txt,
+    )
+    update_object = UpdateObject(message=update_message)
+    update = Update(type=type, object=update_object)
+    return update
 
 
 def check_answers(answers: list) -> bool:

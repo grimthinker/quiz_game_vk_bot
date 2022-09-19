@@ -48,6 +48,7 @@ async def question_1(db_session, theme_1: Theme) -> Question:
         question = QuestionModel(
             title=title,
             theme_id=theme_1.id,
+            points=100,
             answers=[
                 AnswerModel(
                     title="well",
@@ -66,6 +67,7 @@ async def question_1(db_session, theme_1: Theme) -> Question:
         id=question.id,
         title=title,
         theme_id=theme_1.id,
+        points=question.points,
         answers=[
             Answer(
                 title=a.title,
@@ -83,6 +85,7 @@ async def question_2(db_session, theme_1: Theme) -> Question:
         question = QuestionModel(
             title=title,
             theme_id=theme_1.id,
+            points=200,
             answers=[
                 AnswerModel(
                     title="yep",
@@ -101,6 +104,7 @@ async def question_2(db_session, theme_1: Theme) -> Question:
         id=question.id,
         title=question.title,
         theme_id=theme_1.id,
+        points=question.points,
         answers=[
             Answer(
                 title=a.title,
@@ -109,3 +113,25 @@ async def question_2(db_session, theme_1: Theme) -> Question:
             for a in question.answers
         ],
     )
+
+
+@pytest.fixture
+async def fill_db_with_questions(db_session):
+    for x in range(3):
+        new_theme = ThemeModel(id=x + 1, title=f"theme {x+1}")
+        async with db_session.begin() as session:
+            session.add(new_theme)
+        for q in range(3):
+            question = QuestionModel(
+                title=f"question {q+1} of theme {x+1}",
+                theme_id=x + 1,
+                points=(q + 1) * 100,
+                answers=[
+                    AnswerModel(title="answer 1", is_correct=False),
+                    AnswerModel(title="answer 2", is_correct=True),
+                    AnswerModel(title="answer 3", is_correct=False),
+                ],
+            )
+            async with db_session.begin() as session:
+                session.add(question)
+    yield

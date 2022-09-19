@@ -3,7 +3,6 @@ import logging
 from typing import Optional, TYPE_CHECKING
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import text
 from app.store.database import db
 
 if TYPE_CHECKING:
@@ -23,11 +22,13 @@ class Database:
         db_name = self.app.config.database.database
         host = self.app.config.database.host
         port = self.app.config.database.port
-        return f'postgresql+asyncpg://{user}:{password}@{host}:{port}/{db_name}'
+        return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db_name}"
 
     async def connect(self, *_: list, **__: dict) -> None:
         self._db = db
-        self._engine = create_async_engine(self._build_async_db_uri(), echo=True, future=True)
+        self._engine = create_async_engine(
+            self._build_async_db_uri(), echo=True, future=True
+        )
         self.session = sessionmaker(
             self._engine, expire_on_commit=False, class_=AsyncSession
         )
@@ -35,7 +36,5 @@ class Database:
     async def disconnect(self, *_: list, **__: dict) -> None:
         try:
             await self._engine.dispose()
-
         except Exception as err:
             logging.warning(err)
-

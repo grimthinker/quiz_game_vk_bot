@@ -23,10 +23,10 @@ def event_loop():
 
 @pytest.fixture(scope="session")
 def server():
+    config_path = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)), "..", "config.yml")
     app = setup_app(
-        config_path=os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), "..", "config.yml"
-        )
+        config_path=config_path
     )
     app.on_startup.clear()
     app.on_shutdown.clear()
@@ -37,7 +37,13 @@ def server():
     app.on_startup.append(app.database.connect)
     app.on_shutdown.append(app.database.disconnect)
 
-    return app
+    yield app
+
+
+@pytest.fixture(autouse=True)
+def reset_send_message_mock(store):
+    yield
+    store.vk_api.send_message.reset_mock()
 
 
 @pytest.fixture
@@ -50,19 +56,30 @@ def db_session(server):
     return server.database.session
 
 
-@pytest.fixture(autouse=True, scope="function")
+@pytest.fixture(autouse=True)
 async def clear_db(server):
     yield
     try:
-        session = AsyncSession(server.database._engine)
+        session = server.database.session()
         connection = session.connection()
-        for table in server.database._db.metadata.tables:
+        tables = (
+            "players",
+            "chats",
+            "themes",
+            "admins",
+            "association_players_sessions",
+            "association_sessions_questions",
+            "game_sessions",
+            "questions",
+            "session_states",
+        )
+        for table in tables:
             await session.execute(text(f"TRUNCATE {table} CASCADE"))
+            await session.commit()
+        for table in ["questions", "game_sessions", "themes", "admins"]:
             await session.execute(text(f"ALTER SEQUENCE {table}_id_seq RESTART WITH 1"))
-
-        await session.commit()
+            await session.commit()
         connection.close()
-
     except Exception as err:
         logging.warning(err)
 
@@ -73,8 +90,9 @@ def config(server) -> Config:
 
 
 @pytest.fixture(autouse=True)
-def cli(aiohttp_client, event_loop, server) -> TestClient:
-    return event_loop.run_until_complete(aiohttp_client(server))
+async def cli(aiohttp_client, event_loop, server) -> TestClient:
+    client = await aiohttp_client(server)
+    yield client
 
 
 @pytest.fixture

@@ -6,6 +6,7 @@ from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
 
 from app.base.base_accessor import BaseAccessor
+from app.store.vk_api.dataclasses import Update
 from app.web.utils import make_update_from_raw
 from app.store.vk_api.poller import Poller
 
@@ -26,7 +27,6 @@ class VkApiAccessor(BaseAccessor):
 
     async def connect(self, app: "Application"):
         self.session = ClientSession(connector=TCPConnector(verify_ssl=False))
-        await self.app.store.bots_manager.do_things_on_start()
         try:
             await self._get_long_poll_service()
         except Exception as e:
@@ -67,7 +67,7 @@ class VkApiAccessor(BaseAccessor):
             self.ts = data["ts"]
             self.logger.info(self.server)
 
-    async def poll(self):
+    async def poll(self) -> list[Update]:
         async with self.session.get(
             self._build_query(
                 host=self.server,
@@ -86,13 +86,15 @@ class VkApiAccessor(BaseAccessor):
             raw_updates = data.get("updates", [])
             updates = []
             for update in raw_updates:
-
                 try:
                     update = make_update_from_raw(update)
                     updates.append(update)
                 except KeyError as e:
-                    self.logger.error("Error in function make_update_from_raw: some key not found.\n", e)
-            await self.app.store.bots_manager.handle_updates(updates)
+                    self.logger.error(
+                        "Error in function make_update_from_raw: some key not found.\n",
+                        e,
+                    )
+            return updates
 
     async def get_user_name(self, id: int):
         params = {
@@ -100,23 +102,25 @@ class VkApiAccessor(BaseAccessor):
             "access_token": self.app.config.bot.token,
         }
         async with self.session.get(
-                self._build_query(
-                    API_PATH,
-                    "users.get",
-                    params=params,
-                )
+            self._build_query(
+                API_PATH,
+                "users.get",
+                params=params,
+            )
         ) as resp:
             data = await resp.json()
             self.logger.info(data)
             return data["response"][0]["first_name"]
 
-    async def send_message(self, peer_id: int, message: str, keyboard: Optional[dict] = None) -> None:
+    async def send_message(
+        self, peer_id: int, message: str, keyboard: Optional[dict] = None
+    ) -> None:
         params = {
-                    "random_id": random.randint(1, 2**32),
-                    "peer_id": peer_id,
-                    "message": message,
-                    "access_token": self.app.config.bot.token,
-                }
+            "random_id": random.randint(1, 2**32),
+            "peer_id": peer_id,
+            "message": message,
+            "access_token": self.app.config.bot.token,
+        }
         if keyboard:
             params.update({"keyboard": keyboard})
         async with self.session.get(
