@@ -12,6 +12,7 @@ def question2dict(question: Question):
     return {
         "id": int(question.id),
         "title": str(question.title),
+        "points": question.points,
         "theme_id": int(question.theme_id),
         "answers": [answer2dict(answer) for answer in question.answers],
     }

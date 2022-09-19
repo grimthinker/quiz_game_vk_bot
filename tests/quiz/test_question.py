@@ -81,7 +81,8 @@ class TestQuestionsStore:
     async def test_list_questions(
         self, cli, store: Store, question_1: Question, question_2: Question
     ):
-        questions = await store.quizzes.list_questions()
+        async with cli.app.database.session.begin() as db_session:
+            questions = await store.quizzes.list_questions(db_session=db_session)
         assert questions == [question_1, question_2]
 
     async def test_check_cascade_delete(self, cli, question_1: Question):

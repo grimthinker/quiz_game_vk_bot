@@ -3,7 +3,7 @@ import os
 import yaml
 
 from hashlib import sha256
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, text
 
 from app.admin.models import Admin, AdminModel
 from app.base.base_accessor import BaseAccessor
@@ -40,3 +40,4 @@ class AdminAccessor(BaseAccessor):
             async with session.begin():
                 stmt = delete(AdminModel).where(AdminModel.email == email)
                 await session.execute(stmt)
+                await session.execute(text(f"ALTER SEQUENCE admins_id_seq RESTART WITH 1"))

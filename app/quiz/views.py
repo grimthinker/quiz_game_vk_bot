@@ -68,6 +68,7 @@ class QuestionAddView(AuthRequiredMixin, View):
             data={
                 "id": question.id,
                 "theme_id": theme_id,
+                "points": question.points,
                 "answers": raw_answers,
                 "title": title,
             }
@@ -83,7 +84,8 @@ class QuestionListView(AuthRequiredMixin, View):
             theme_id = int(self.request.query["id"])
         except:
             pass
-        questions = await self.store.quizzes.list_questions(theme_id)
+        async with self.database.session.begin() as db_session:
+            questions = await self.store.quizzes.list_questions(db_session, theme_id)
         data = {"questions": []}
         for q in questions:
             raw_answers = [AnswerSchema().dump(answer) for answer in q.answers]
@@ -92,6 +94,7 @@ class QuestionListView(AuthRequiredMixin, View):
                 "theme_id": q.theme_id,
                 "answers": raw_answers,
                 "title": q.title,
+                "points": q.points
             }
             data["questions"].append(question)
         return json_response(data=data)

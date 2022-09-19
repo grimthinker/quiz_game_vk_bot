@@ -23,10 +23,10 @@ def event_loop():
 
 @pytest.fixture(scope="session")
 def server():
+    config_path = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)), "..", "config.yml")
     app = setup_app(
-        config_path=os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), "..", "config.yml"
-        )
+        config_path=config_path
     )
     app.on_startup.clear()
     app.on_shutdown.clear()
@@ -66,6 +66,7 @@ async def clear_db(server):
             "players",
             "chats",
             "themes",
+            "admins",
             "association_players_sessions",
             "association_sessions_questions",
             "game_sessions",
@@ -75,7 +76,7 @@ async def clear_db(server):
         for table in tables:
             await session.execute(text(f"TRUNCATE {table} CASCADE"))
             await session.commit()
-        for table in ["questions", "game_sessions", "themes"]:
+        for table in ["questions", "game_sessions", "themes", "admins"]:
             await session.execute(text(f"ALTER SEQUENCE {table}_id_seq RESTART WITH 1"))
             await session.commit()
         connection.close()

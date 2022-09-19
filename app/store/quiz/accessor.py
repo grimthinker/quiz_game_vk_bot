@@ -1,6 +1,8 @@
 from typing import Optional, Union, Iterable
 import logging
 from sqlalchemy import select, delete, text, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.base.base_accessor import BaseAccessor
 from app.game_session.models import SessionsQuestions
 from app.quiz.models import (
@@ -14,6 +16,30 @@ from app.quiz.models import (
 
 
 class QuizAccessor(BaseAccessor):
+    async def connect(self, app: "Application"):
+        try:
+            for x in range(3):
+                new_theme = ThemeModel(id=x + 1, title=f"theme {x + 1}")
+                async with self.app.database.session() as session:
+                    async with session.begin():
+                        session.add(new_theme)
+                for q in range(3):
+                    question = QuestionModel(
+                        title=f"question {q + 1} of theme {x + 1}",
+                        theme_id=x + 1,
+                        points=(q + 1) * 100,
+                        answers=[
+                            AnswerModel(title="answer 1", is_correct=False),
+                            AnswerModel(title="answer 2", is_correct=True),
+                            AnswerModel(title="answer 3", is_correct=False),
+                        ],
+                    )
+                    async with self.app.database.session() as session:
+                        async with session.begin():
+                            session.add(question)
+        except:
+            self.app.store.quizzes.logger.info("DB has questions")
+
     async def create_theme(self, title: str) -> Theme:
         async with self.app.database.session() as session:
             async with session.begin():
@@ -108,72 +134,69 @@ class QuizAccessor(BaseAccessor):
                         answers=answers,
                     )
 
-    async def get_question_by_id(self, id: int) -> Optional[Question]:
-        async with self.app.database.session() as session:
-            async with session.begin():
-                stmt = select(QuestionModel).where(QuestionModel.id == id)
-                result = await session.execute(stmt)
-                curr = result.scalars()
-                for q in curr:
-                    stmt = select(AnswerModel).where(AnswerModel.question_id == q.id)
-                    result = await session.execute(stmt)
-                    curr = result.scalars()
-                    answers = [
-                        Answer(is_correct=a.is_correct, title=a.title) for a in curr
-                    ]
-                    return Question(
-                        id=q.id,
-                        title=q.title,
-                        points=q.points,
-                        theme_id=q.theme_id,
-                        answers=answers,
-                    )
+    async def get_question_by_id(self, db_session: AsyncSession, id: int) -> Optional[Question]:
+        stmt = select(QuestionModel).where(QuestionModel.id == id)
+        result = await db_session.execute(stmt)
+        curr = result.scalars()
+        for q in curr:
+            stmt = select(AnswerModel).where(AnswerModel.question_id == q.id)
+            result = await db_session.execute(stmt)
+            curr = result.scalars()
+            answers = [
+                Answer(is_correct=a.is_correct, title=a.title) for a in curr
+            ]
+            return Question(
+                id=q.id,
+                title=q.title,
+                points=q.points,
+                theme_id=q.theme_id,
+                answers=answers,
+            )
 
     async def list_questions(
         self,
+        db_session: AsyncSession,
         theme_id: Optional[int] = None,
         points: Optional[int] = None,
         limit: Optional[int] = None,
         session_id: Optional[int] = None,
         answered: Optional[bool] = None,
     ) -> list[Question]:
-        async with self.app.database.session() as session:
-            async with session.begin():
-                stmt = select(QuestionModel)
-                if session_id:
-                    sub_conditions = [
-                        (SessionsQuestions.session_state_id == session_id)
-                    ]
-                    if answered is not None:
-                        sub_conditions.append(
-                            (SessionsQuestions.is_answered == answered)
-                        )
-                    condition = QuestionModel.sessions.any(and_(*sub_conditions))
-                    stmt = stmt.filter(condition)
-                if theme_id:
-                    stmt = stmt.where(QuestionModel.theme_id == theme_id)
-                if points:
-                    stmt = stmt.where(QuestionModel.points == points)
-                if limit:
-                    stmt = stmt.limit(limit)
-                result = await session.execute(stmt)
-                question_list = []
-                curr = result.scalars()
-                for q in curr:
-                    stmt = select(AnswerModel).where(AnswerModel.question_id == q.id)
-                    result = await session.execute(stmt)
-                    curr = result.scalars()
-                    answers = [
-                        Answer(is_correct=a.is_correct, title=a.title) for a in curr
-                    ]
+        stmt = select(QuestionModel)
+        if session_id:
+            sub_conditions = [
+                (SessionsQuestions.session_state_id == session_id)
+            ]
+            if answered is not None:
+                sub_conditions.append(
+                    (SessionsQuestions.is_answered == answered)
+                )
+            condition = QuestionModel.sessions.any(and_(*sub_conditions))
+            stmt = stmt.filter(condition)
+        if theme_id:
+            stmt = stmt.where(QuestionModel.theme_id == theme_id)
+        if points:
+            stmt = stmt.where(QuestionModel.points == points)
+        if limit:
+            stmt = stmt.limit(limit)
+        result = await db_session.execute(stmt)
+        question_list = []
+        curr = result.scalars()
+        for q in curr:
+            stmt = select(AnswerModel).where(AnswerModel.question_id == q.id)
+            result = await db_session.execute(stmt)
+            curr = result.scalars()
+            answers = [
+                Answer(is_correct=a.is_correct, title=a.title) for a in curr
+            ]
 
-                    question_list.append(
-                        Question(
-                            title=q.title,
-                            id=q.id,
-                            points=q.points,
-                            theme_id=q.theme_id,
-                            answers=answers,
-                        )
-                    )
-                return question_list
+            question_list.append(
+                Question(
+                    title=q.title,
+                    id=q.id,
+                    points=q.points,
+                    theme_id=q.theme_id,
+                    answers=answers,
+                )
+            )
+        return question_list
